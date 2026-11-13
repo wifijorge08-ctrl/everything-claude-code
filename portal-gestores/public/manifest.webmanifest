@@ -1,0 +1,13 @@
+{
+  "name": "Portal de gestores",
+  "short_name": "Gestores",
+  "lang": "es",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f4f1",
+  "theme_color": "#256abf",
+  "icons": [
+    { "src": "/icono-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "/icono-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

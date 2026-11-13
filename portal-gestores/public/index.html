@@ -2,37 +2,70 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#f4f4f1" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0d0d0d" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Gestores">
   <title>Portal de gestores</title>
+  <link rel="icon" href="/icono.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icono-180.png">
+  <link rel="manifest" href="/manifest.webmanifest">
   <link rel="stylesheet" href="/estilos.css">
 </head>
 <body>
   <main id="vista-login" class="login" hidden>
     <form id="form-login" class="login__caja" autocomplete="on">
+      <svg class="marca marca--grande" viewBox="0 0 32 32" aria-hidden="true">
+        <rect class="marca__fondo" width="32" height="32" rx="8"></rect>
+        <rect class="marca__barra" x="7" y="17" width="4" height="8" rx="1.5"></rect>
+        <rect class="marca__barra" x="14" y="12" width="4" height="13" rx="1.5"></rect>
+        <rect class="marca__barra" x="21" y="7" width="4" height="18" rx="1.5"></rect>
+      </svg>
       <h1>Portal de gestores</h1>
-      <p class="tenue">Ingresa para ver tu cartera.</p>
+      <p class="login__sub">Ingresa con tu usuario y tu clave para ver tu cartera.</p>
       <label for="usuario">Usuario</label>
-      <input id="usuario" name="usuario" autocomplete="username" autocapitalize="none" required>
+      <input id="usuario" name="usuario" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required>
       <label for="clave">Clave</label>
       <input id="clave" name="clave" type="password" autocomplete="current-password" required>
-      <p id="error-login" class="error" role="alert" hidden></p>
-      <button type="submit">Ingresar</button>
+      <p id="error-login" class="aviso-error" role="alert" hidden></p>
+      <button id="boton-login" type="submit" class="boton">Ingresar</button>
+      <p class="login__pie">Acceso exclusivo para personal autorizado.</p>
     </form>
   </main>
 
   <div id="vista-panel" hidden>
     <header class="barra">
-      <div>
-        <p class="tenue" id="periodo"></p>
-        <h1 id="saludo"></h1>
-      </div>
-      <div class="barra__lado">
-        <span id="estado" class="estado" role="status"></span>
-        <button id="salir" type="button" class="boton-secundario">Salir</button>
+      <div class="barra__interior">
+        <div class="barra__marca">
+          <svg class="marca" viewBox="0 0 32 32" aria-hidden="true">
+            <rect class="marca__fondo" width="32" height="32" rx="8"></rect>
+            <rect class="marca__barra" x="7" y="17" width="4" height="8" rx="1.5"></rect>
+            <rect class="marca__barra" x="14" y="12" width="4" height="13" rx="1.5"></rect>
+            <rect class="marca__barra" x="21" y="7" width="4" height="18" rx="1.5"></rect>
+          </svg>
+          <div class="barra__titulos">
+            <span class="barra__titulo">Portal de gestores</span>
+            <span id="empresa" class="barra__empresa" hidden></span>
+          </div>
+        </div>
+        <div class="barra__lado">
+          <span id="estado" class="estado" role="status"></span>
+          <span id="avatar" class="avatar" aria-hidden="true"></span>
+          <button id="salir" type="button" class="boton boton--discreto">Salir</button>
+        </div>
       </div>
     </header>
-    <main id="contenido" class="contenido"></main>
+
+    <main class="pagina">
+      <div class="encabezado">
+        <h1 id="saludo"></h1>
+        <p id="periodo" class="encabezado__sub"></p>
+      </div>
+      <div id="contenido" class="contenido" aria-live="polite"></div>
+      <p id="pie" class="pie"></p>
+    </main>
   </div>
 
   <script src="/app.js"></script>

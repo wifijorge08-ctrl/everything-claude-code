@@ -6,7 +6,8 @@ const { fechaHoy } = require('../metricas');
 /**
  * Fuente de datos: Controla+ (api.controlaplus.com.mx).
  *
- * SOLO LECTURA. Usa unicamente el inicio de sesion y cuatro consultas:
+ * SOLO LECTURA. Usa unicamente el inicio de sesion y cinco consultas:
+ *   - /company/get-one             nombre de la empresa
  *   - /branch/get-all-by-company   sucursales
  *   - /route/get-all               rutas y cobrador asignado (ruta = gestor)
  *   - /reports/collection-efficiency  esperado y cobrado por ruta
@@ -76,7 +77,8 @@ function crearFuenteControlaPlus(opciones) {
       empresa: cuerpo.data.company_uuid,
       zonaHoraria: cuerpo.data.timezone || undefined,
       moneda: cuerpo.data.currency || null,
-      sucursal: sesion ? sesion.sucursal : sucursal || null
+      sucursal: sesion ? sesion.sucursal : sucursal || null,
+      nombreEmpresa: sesion ? sesion.nombreEmpresa : undefined
     };
   }
 
@@ -107,6 +109,15 @@ function crearFuenteControlaPlus(opciones) {
     return sesion.sucursal;
   }
 
+  async function nombreEmpresa() {
+    if (sesion.nombreEmpresa === undefined) {
+      // El nombre es decorativo: si no se puede leer, el portal sigue sin el.
+      const datos = await pedir('GET', `/company/get-one/${sesion.empresa}`).catch(() => null);
+      sesion.nombreEmpresa = (datos && datos.name) || null;
+    }
+    return sesion.nombreEmpresa;
+  }
+
   async function prestamos(sucursalId) {
     const filas = [];
     let generado = null;
@@ -135,7 +146,8 @@ function crearFuenteControlaPlus(opciones) {
     // Controla+ interpreta estas fechas en la zona horaria de la sucursal.
     const rango = hasta => ({ branchUuid: sucursalId, from: `${mes}-01T00:00:00Z`, to: `${hasta}T23:59:59Z` });
 
-    const [rutas, aLaFecha, delMes, cartera] = await Promise.all([
+    const [empresa, rutas, aLaFecha, delMes, cartera] = await Promise.all([
+      nombreEmpresa(),
       pedir('GET', `/route/get-all?branch=${sucursalId}&page=0&size=500`),
       pedir('POST', '/reports/collection-efficiency', rango(hoy)),
       pedir('POST', '/reports/collection-efficiency', rango(`${mes}-${String(ultimoDia).padStart(2, '0')}`)),
@@ -176,6 +188,7 @@ function crearFuenteControlaPlus(opciones) {
 
     return {
       hoy,
+      empresa,
       moneda: aLaFecha.currency || sesion.moneda,
       actualizado: cartera.generado || reloj().toISOString(),
       gestores: listaRutas.map(r => ({

@@ -26,6 +26,7 @@ function apiFalsa() {
       timezone: 'America/Managua',
       currency: 'NIO'
     }),
+    'GET /company/get-one/EMP': () => ({ name: 'Creditos Ejemplo' }),
     'GET /branch/get-all-by-company/EMP': () => [{ uuid: 'SUC', isHeadquarters: true, isActive: true }],
     'GET /route/get-all': () => ({
       content: [
@@ -68,6 +69,7 @@ test('Controla+: arma la cartera por ruta y solo hace consultas', async () => {
   const cartera = await fuente.obtenerCartera();
   assert.equal(cartera.hoy, '2026-11-12');
   assert.equal(cartera.moneda, 'NIO');
+  assert.equal(cartera.empresa, 'Creditos Ejemplo');
   assert.deepEqual(cartera.gestores, [{ id: 'R1', ruta: 'Ruta Norte', nombre: 'Ruta Norte (Ana Torres)' }]);
   assert.equal(cartera.creditos.length, 2);
 
@@ -82,6 +84,7 @@ test('Controla+: arma la cartera por ruta y solo hace consultas', async () => {
   const usadas = new Set(llamadas.map(l => `${l.metodo} ${l.ruta}`));
   assert.deepEqual([...usadas].sort(), [
     'GET /branch/get-all-by-company/EMP',
+    'GET /company/get-one/EMP',
     'GET /route/get-all',
     'POST /auth/login',
     'POST /reports/aging',

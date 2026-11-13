@@ -10,7 +10,11 @@ const PUBLICO = path.join(__dirname, '..', 'public');
 const ESTATICOS = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
-  '/estilos.css': ['estilos.css', 'text/css; charset=utf-8']
+  '/estilos.css': ['estilos.css', 'text/css; charset=utf-8'],
+  '/icono.svg': ['icono.svg', 'image/svg+xml'],
+  '/icono-180.png': ['icono-180.png', 'image/png'],
+  '/icono-512.png': ['icono-512.png', 'image/png'],
+  '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json; charset=utf-8']
 };
 const COOKIE = 'sid';
 const LIMITE_CUERPO = 10 * 1024;
@@ -93,12 +97,20 @@ function crearApp({ fuente, usuarios, zonaHoraria, cookieSegura = true, interval
     if (sesion.rol === 'admin') {
       return {
         tipo: 'admin',
+        empresa: cartera.empresa || null,
         moneda: cartera.moneda || null,
         actualizado: cartera.actualizado || null,
         equipo: calcularEquipo(cartera, dia)
       };
     }
-    return { tipo: 'gestor', moneda: cartera.moneda || null, resumen: calcularResumen(cartera, sesion.gestorId, dia) };
+    const gestor = (cartera.gestores || []).find(g => g && g.id === sesion.gestorId);
+    return {
+      tipo: 'gestor',
+      empresa: cartera.empresa || null,
+      moneda: cartera.moneda || null,
+      cartera: gestor ? gestor.ruta || gestor.nombre : null,
+      resumen: calcularResumen(cartera, sesion.gestorId, dia)
+    };
   }
 
   async function iniciarSesion(req, res) {
