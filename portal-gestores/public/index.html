@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Portal de gestores</title>
+  <link rel="stylesheet" href="/estilos.css">
+</head>
+<body>
+  <main id="vista-login" class="login" hidden>
+    <form id="form-login" class="login__caja" autocomplete="on">
+      <h1>Portal de gestores</h1>
+      <p class="tenue">Ingresa para ver tu cartera.</p>
+      <label for="usuario">Usuario</label>
+      <input id="usuario" name="usuario" autocomplete="username" autocapitalize="none" required>
+      <label for="clave">Clave</label>
+      <input id="clave" name="clave" type="password" autocomplete="current-password" required>
+      <p id="error-login" class="error" role="alert" hidden></p>
+      <button type="submit">Ingresar</button>
+    </form>
+  </main>
+
+  <div id="vista-panel" hidden>
+    <header class="barra">
+      <div>
+        <p class="tenue" id="periodo"></p>
+        <h1 id="saludo"></h1>
+      </div>
+      <div class="barra__lado">
+        <span id="estado" class="estado" role="status"></span>
+        <button id="salir" type="button" class="boton-secundario">Salir</button>
+      </div>
+    </header>
+    <main id="contenido" class="contenido"></main>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

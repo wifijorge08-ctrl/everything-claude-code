@@ -1,0 +1,3 @@
+# Usuarios (hashes de claves) y datos reales de cartera: nunca al repositorio
+datos/usuarios.json
+datos/cartera.json

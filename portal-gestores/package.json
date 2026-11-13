@@ -1,0 +1,15 @@
+{
+  "name": "portal-gestores",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Portal individual para gestores de cobranza: recuperacion, mora y meta mensual en vivo.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "demo": "PORTAL_DEMO=1 node server.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
