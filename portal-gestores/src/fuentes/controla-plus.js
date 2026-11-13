@@ -29,7 +29,8 @@ function venceToken(token) {
   }
 }
 
-function leerMetas(ruta, mes) {
+function leerMetas(fijas, ruta, mes) {
+  if (fijas) return fijas[mes] || {};
   if (!ruta) return {};
   try {
     const todas = JSON.parse(fs.readFileSync(ruta, 'utf8'));
@@ -46,6 +47,8 @@ function crearFuenteControlaPlus(opciones) {
     clave,
     sucursal,
     archivoMetas,
+    metas: metasFijas,
+    metaPorcentaje = 100,
     base = BASE,
     cacheMs = 60000,
     fetchImpl = fetch,
@@ -140,7 +143,7 @@ function crearFuenteControlaPlus(opciones) {
     ]);
 
     const listaRutas = (rutas.content || []).filter(r => r.isActive !== false);
-    const metasDefinidas = leerMetas(archivoMetas, mes);
+    const metasDefinidas = leerMetas(metasFijas, archivoMetas, mes);
     const filaDelMes = new Map((delMes.rows || []).map(f => [f.routeUuid, f]));
     const filaALaFecha = new Map((aLaFecha.rows || []).map(f => [f.routeUuid, f]));
 
@@ -160,7 +163,14 @@ function crearFuenteControlaPlus(opciones) {
       const definida = metasDefinidas[r.uuid] !== undefined ? metasDefinidas[r.uuid] : metasDefinidas[r.name];
       if (Number(definida) > 0) metas.push({ gestorId: r.uuid, mes, monto: Number(definida), origen: 'definida' });
       else if (completo.expectedCollection > 0) {
-        metas.push({ gestorId: r.uuid, mes, monto: completo.expectedCollection, origen: 'programado' });
+        // Sin meta definida: un porcentaje del cobro programado del mes en Controla+.
+        metas.push({
+          gestorId: r.uuid,
+          mes,
+          monto: Math.round((completo.expectedCollection * metaPorcentaje) / 100),
+          origen: 'programado',
+          porcentaje: metaPorcentaje
+        });
       }
     }
 
@@ -171,7 +181,7 @@ function crearFuenteControlaPlus(opciones) {
       gestores: listaRutas.map(r => ({
         id: r.uuid,
         ruta: r.name,
-        nombre: r.assignedEmployee_fullName ? `${r.assignedEmployee_fullName} (${r.name})` : r.name
+        nombre: r.assignedEmployee_fullName ? `${r.name} (${r.assignedEmployee_fullName.trim()})` : r.name
       })),
       creditos: cartera.filas.map(f => ({
         id: f.loanUuid,

@@ -70,7 +70,7 @@
       el('p', 'nota', detalle),
       el('p', 'tenue nota', `La línea marca el avance esperado al día ${r.dia} de ${r.diasDelMes} (${dinero(m.esperadoAHoy)}).`),
       m.origen === 'programado'
-        ? el('p', 'tenue nota', 'Meta provisional: es el cobro programado del mes, porque aún no se ha definido una meta.')
+        ? el('p', 'tenue nota', `Meta calculada: ${m.porcentajeProgramado || 100} % del cobro programado del mes en Controla+.`)
         : null);
   }
 

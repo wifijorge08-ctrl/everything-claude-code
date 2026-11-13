@@ -68,7 +68,7 @@ test('Controla+: arma la cartera por ruta y solo hace consultas', async () => {
   const cartera = await fuente.obtenerCartera();
   assert.equal(cartera.hoy, '2026-11-12');
   assert.equal(cartera.moneda, 'NIO');
-  assert.deepEqual(cartera.gestores, [{ id: 'R1', ruta: 'Ruta Norte', nombre: 'Ana Torres (Ruta Norte)' }]);
+  assert.deepEqual(cartera.gestores, [{ id: 'R1', ruta: 'Ruta Norte', nombre: 'Ruta Norte (Ana Torres)' }]);
   assert.equal(cartera.creditos.length, 2);
 
   const r = calcularResumen(cartera, 'R1', cartera.hoy);
@@ -92,6 +92,27 @@ test('Controla+: arma la cartera por ruta y solo hace consultas', async () => {
   const antes = llamadas.length;
   await fuente.obtenerCartera();
   assert.equal(llamadas.length, antes);
+});
+
+test('Controla+: meta definida por nombre de ruta, o porcentaje de lo programado', async () => {
+  const opciones = { usuario: 'u', clave: 'c', reloj: () => new Date('2026-11-12T18:00:00Z') };
+
+  const conPorcentaje = crearFuenteControlaPlus({ ...opciones, fetchImpl: apiFalsa().fetchImpl, metaPorcentaje: 95 });
+  const calculada = (await conPorcentaje.obtenerCartera()).metas[0];
+  assert.deepEqual(calculada, { gestorId: 'R1', mes: '2026-11', monto: 950, origen: 'programado', porcentaje: 95 });
+
+  const conMeta = crearFuenteControlaPlus({
+    ...opciones,
+    fetchImpl: apiFalsa().fetchImpl,
+    metaPorcentaje: 95,
+    metas: { '2026-11': { 'Ruta Norte': 800 } }
+  });
+  assert.deepEqual((await conMeta.obtenerCartera()).metas[0], {
+    gestorId: 'R1',
+    mes: '2026-11',
+    monto: 800,
+    origen: 'definida'
+  });
 });
 
 test('Controla+: sin credenciales o con login rechazado falla con un mensaje claro', async () => {

@@ -24,6 +24,16 @@ async function usuariosDemo() {
   return crearUsuariosEnMemoria([...gestores, { usuario: 'admin', nombre: 'Administrador', rol: 'admin', clave }]);
 }
 
+function jsonDeEntorno(nombre) {
+  const texto = process.env[nombre];
+  if (!texto) return undefined;
+  try {
+    return JSON.parse(texto);
+  } catch (_err) {
+    throw new Error(`${nombre} no es JSON valido.`);
+  }
+}
+
 async function main() {
   const env = process.env;
   const demo = env.PORTAL_DEMO === '1';
@@ -47,6 +57,8 @@ async function main() {
         clave: env.CONTROLA_CLAVE,
         sucursal: env.CONTROLA_SUCURSAL,
         archivoMetas: path.resolve(env.PORTAL_METAS || path.join(__dirname, 'datos', 'metas.json')),
+        metas: jsonDeEntorno('PORTAL_METAS_JSON'),
+        metaPorcentaje: Number(env.PORTAL_META_PORCENTAJE || 100),
         cacheMs: Number(env.PORTAL_CACHE_MS || 60000)
       });
     } else if (env.PORTAL_ARCHIVO_CARTERA) {
@@ -54,7 +66,11 @@ async function main() {
     } else {
       throw new Error('Define CONTROLA_USUARIO y CONTROLA_CLAVE (Controla+), PORTAL_ARCHIVO_CARTERA (JSON) o PORTAL_DEMO=1.');
     }
-    usuarios = crearUsuariosDesdeArchivo(path.resolve(env.PORTAL_USUARIOS || path.join(__dirname, 'datos', 'usuarios.json')));
+    // En un hosting sin disco persistente, usuarios y metas se pasan como variables de entorno.
+    const usuariosDeEntorno = jsonDeEntorno('PORTAL_USUARIOS_JSON');
+    usuarios = usuariosDeEntorno
+      ? crearUsuariosEnMemoria(usuariosDeEntorno)
+      : crearUsuariosDesdeArchivo(path.resolve(env.PORTAL_USUARIOS || path.join(__dirname, 'datos', 'usuarios.json')));
   }
 
   const app = crearApp({

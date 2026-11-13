@@ -117,6 +117,9 @@ Cada **ruta** de Controla+ es la cartera de un gestor.
 | `CONTROLA_SUCURSAL` | Identificador de la sucursal (por defecto, la principal) |
 | `PORTAL_CACHE_MS` | Cada cuánto se vuelve a consultar Controla+ (por defecto 60000) |
 | `PORTAL_METAS` | Ruta del archivo de metas (por defecto `datos/metas.json`) |
+| `PORTAL_METAS_JSON` | Las metas como texto JSON, en vez de archivo |
+| `PORTAL_META_PORCENTAJE` | Porcentaje del cobro programado que se usa como meta cuando no hay una definida (por defecto 100) |
+| `PORTAL_USUARIOS_JSON` | Los usuarios (con la clave ya en hash) como texto JSON, en vez de archivo |
 
 Las credenciales se pasan solo por variables de entorno; nunca se guardan en
 el repositorio.
@@ -140,8 +143,30 @@ por nombre (o identificador) de ruta:
 }
 ```
 
-Mientras una ruta no tenga meta definida, el portal usa como meta provisional
-el cobro programado del mes y lo indica en pantalla.
+Mientras una ruta no tenga meta definida, el portal calcula la meta como un
+porcentaje (`PORTAL_META_PORCENTAJE`) del cobro programado del mes en
+Controla+ y lo indica en pantalla. Ese monto se mueve durante el mes si se
+otorgan préstamos nuevos; una meta definida queda fija.
+
+## Publicar en internet
+
+El portal necesita un servidor Node.js que esté siempre encendido y con HTTPS.
+Sirve cualquier hosting de aplicaciones Node (Render, Railway, Fly.io) o un
+servidor propio. En un hosting de este tipo:
+
+1. Crea un servicio web a partir de este repositorio, con `portal-gestores`
+   como directorio raíz y `npm start` como comando de inicio. No hay nada que
+   compilar ni dependencias que instalar.
+2. Define las variables de entorno: `CONTROLA_USUARIO`, `CONTROLA_CLAVE`,
+   `PORTAL_USUARIOS_JSON` y, si quieres, `PORTAL_METAS_JSON`,
+   `PORTAL_META_PORCENTAJE` y `PORTAL_ZONA_HORARIA`. El puerto lo toma de
+   `PORT`, que estos servicios asignan solos.
+3. Usa una sola instancia: las sesiones viven en memoria.
+
+Como estos servicios no conservan archivos entre despliegues, los usuarios y
+las metas se pasan por variables de entorno en lugar de `datos/*.json`. Para
+obtener el hash de una clave, crea el usuario con `bin/crear-usuario.js` en tu
+equipo y copia el contenido de `datos/usuarios.json` a `PORTAL_USUARIOS_JSON`.
 
 ## Seguridad
 

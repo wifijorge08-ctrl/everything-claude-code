@@ -125,7 +125,10 @@ function calcularResumen(cartera, gestorId, hoy) {
   const recaudadoMes = agregado && agregado.recaudadoMes !== undefined ? monto(agregado.recaudadoMes) : recaudado;
   const meta = (cartera.metas || []).find(m => m && m.gestorId === gestorId && m.mes === mes);
   const resumenMeta = calcularMeta(meta ? monto(meta.monto) : 0, recaudadoMes, dia, diasDelMes);
-  if (resumenMeta) resumenMeta.origen = meta.origen || 'definida';
+  if (resumenMeta) {
+    resumenMeta.origen = meta.origen || 'definida';
+    if (meta.porcentaje) resumenMeta.porcentajeProgramado = meta.porcentaje;
+  }
 
   return {
     gestorId,
