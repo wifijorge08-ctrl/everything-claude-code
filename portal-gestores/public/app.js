@@ -13,7 +13,9 @@
   const formatoPct = new Intl.NumberFormat('es', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   let eventos = null;
 
-  const dinero = n => `$${formatoMonto.format(n || 0)}`;
+  const SIMBOLOS = { NIO: 'C$', USD: 'US$', MXN: '$', COP: '$' };
+  let simbolo = '$';
+  const dinero = n => `${simbolo}${formatoMonto.format(n || 0)}`;
   const pct = n => (n === null || n === undefined ? 'Sin datos' : `${formatoPct.format(n)} %`);
 
   // Todo el contenido se inserta como texto (nunca como HTML).
@@ -66,7 +68,10 @@
       el('p', 'tenue', `${dinero(m.recaudado)} de ${dinero(m.monto)}`),
       barra(m.cumplimiento, tono, m.avanceEsperado),
       el('p', 'nota', detalle),
-      el('p', 'tenue nota', `La línea marca el avance esperado al día ${r.dia} de ${r.diasDelMes} (${dinero(m.esperadoAHoy)}).`));
+      el('p', 'tenue nota', `La línea marca el avance esperado al día ${r.dia} de ${r.diasDelMes} (${dinero(m.esperadoAHoy)}).`),
+      m.origen === 'programado'
+        ? el('p', 'tenue nota', 'Meta provisional: es el cobro programado del mes, porque aún no se ha definido una meta.')
+        : null);
   }
 
   function tarjetaRecuperacion(r) {
@@ -76,9 +81,12 @@
       el('p', 'cifra', pct(rec.porcentaje)),
       barra(rec.porcentaje, 'bien'),
       el('div', 'datos',
-        dato('Recaudado', dinero(rec.recaudado)),
-        dato('Por cobrar este mes', dinero(rec.porCobrar)),
-        dato('Pagos recibidos', String(rec.pagos))));
+        dato(rec.aLaFecha ? 'Cobrado de lo programado' : 'Recaudado', dinero(rec.recaudado)),
+        dato(rec.aLaFecha ? 'Programado a la fecha' : 'Por cobrar este mes', dinero(rec.porCobrar)),
+        rec.pagos === null ? null : dato('Pagos recibidos', String(rec.pagos))),
+      rec.aLaFecha
+        ? el('p', 'tenue nota', 'Cuotas del mes que ya vencieron y cuánto de ellas se ha cobrado.')
+        : null);
   }
 
   function tarjetaMora(r) {
@@ -144,6 +152,7 @@
   }
 
   function pintar(vista) {
+    simbolo = SIMBOLOS[vista.moneda] || '$';
     const referencia = vista.tipo === 'admin' ? vista.equipo[0] : vista.resumen;
     if (referencia) {
       const [anio, mes] = referencia.mes.split('-');

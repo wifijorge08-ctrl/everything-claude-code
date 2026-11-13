@@ -117,24 +117,32 @@ function calcularResumen(cartera, gestorId, hoy) {
   const creditos = (cartera.creditos || []).filter(c => c && c.gestorId === gestorId);
   const pagos = pagosDelMes(cartera, gestorId, mes);
 
-  const recaudado = pagos.reduce((s, p) => s + monto(p.monto), 0);
-  const porCobrar = creditos.reduce((s, c) => s + monto(c.cuotaMes), 0);
+  // Una fuente puede entregar el recaudo ya agregado por gestor (p. ej. un
+  // reporte del sistema de cartera); si no, se calcula de pagos y cuotas.
+  const agregado = (cartera.recaudo || []).find(r => r && r.gestorId === gestorId && r.mes === mes);
+  const recaudado = agregado ? monto(agregado.recaudado) : pagos.reduce((s, p) => s + monto(p.monto), 0);
+  const porCobrar = agregado ? monto(agregado.porCobrar) : creditos.reduce((s, c) => s + monto(c.cuotaMes), 0);
+  const recaudadoMes = agregado && agregado.recaudadoMes !== undefined ? monto(agregado.recaudadoMes) : recaudado;
   const meta = (cartera.metas || []).find(m => m && m.gestorId === gestorId && m.mes === mes);
+  const resumenMeta = calcularMeta(meta ? monto(meta.monto) : 0, recaudadoMes, dia, diasDelMes);
+  if (resumenMeta) resumenMeta.origen = meta.origen || 'definida';
 
   return {
     gestorId,
     mes,
     dia,
     diasDelMes,
+    moneda: cartera.moneda || null,
     actualizado: cartera.actualizado || null,
     recuperacion: {
       porcentaje: porcentaje(recaudado, porCobrar),
       recaudado: redondear(recaudado),
       porCobrar: redondear(porCobrar),
-      pagos: pagos.length
+      pagos: agregado ? null : pagos.length,
+      aLaFecha: Boolean(agregado && agregado.aLaFecha)
     },
     mora: calcularMora(creditos),
-    meta: calcularMeta(meta ? monto(meta.monto) : 0, recaudado, dia, diasDelMes)
+    meta: resumenMeta
   };
 }
 
@@ -149,11 +157,13 @@ function idsDeGestores(cartera) {
 /** Vista del administrador: un resumen por cada gestor. */
 function calcularEquipo(cartera, hoy) {
   const nombres = new Map((cartera.gestores || []).filter(Boolean).map(g => [g.id, g.nombre]));
-  return idsDeGestores(cartera).map(id => {
-    const resumen = calcularResumen(cartera, id, hoy);
-    delete resumen.mora.clientes;
-    return { ...resumen, nombre: nombres.get(id) || id };
-  });
+  return idsDeGestores(cartera)
+    .map(id => {
+      const resumen = calcularResumen(cartera, id, hoy);
+      delete resumen.mora.clientes;
+      return { ...resumen, nombre: nombres.get(id) || id };
+    })
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
 }
 
 module.exports = { calcularResumen, calcularEquipo, fechaHoy };

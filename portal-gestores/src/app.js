@@ -88,10 +88,17 @@ function crearApp({ fuente, usuarios, zonaHoraria, cookieSegura = true, interval
   // La cartera visible depende SOLO de la sesion; nunca de un parametro del cliente.
   async function vistaPara(sesion) {
     const cartera = await fuente.obtenerCartera();
+    // La fuente puede fijar la fecha de negocio (en su propia zona horaria).
+    const dia = cartera.hoy || hoy();
     if (sesion.rol === 'admin') {
-      return { tipo: 'admin', actualizado: cartera.actualizado || null, equipo: calcularEquipo(cartera, hoy()) };
+      return {
+        tipo: 'admin',
+        moneda: cartera.moneda || null,
+        actualizado: cartera.actualizado || null,
+        equipo: calcularEquipo(cartera, dia)
+      };
     }
-    return { tipo: 'gestor', resumen: calcularResumen(cartera, sesion.gestorId, hoy()) };
+    return { tipo: 'gestor', moneda: cartera.moneda || null, resumen: calcularResumen(cartera, sesion.gestorId, dia) };
   }
 
   async function iniciarSesion(req, res) {

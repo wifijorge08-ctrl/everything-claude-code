@@ -27,7 +27,7 @@ const CARTERA = {
 
 test('calcularResumen: recuperacion, mora y meta del gestor', () => {
   const r = calcularResumen(CARTERA, 'G01', HOY);
-  assert.deepEqual(r.recuperacion, { porcentaje: 50, recaudado: 400, porCobrar: 800, pagos: 2 });
+  assert.deepEqual(r.recuperacion, { porcentaje: 50, recaudado: 400, porCobrar: 800, pagos: 2, aLaFecha: false });
   assert.equal(r.mora.indice, 10);
   assert.equal(r.mora.clientesEnMora, 1);
   assert.deepEqual(r.mora.tramos.find(t => t.etiqueta === '31-60'), { etiqueta: '31-60', clientes: 1, monto: 400 });

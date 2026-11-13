@@ -80,12 +80,68 @@ En producción debe publicarse detrás de HTTPS.
 El portal relee el archivo cuando cambia y empuja la actualización a los
 navegadores abiertos, sin recargar la página.
 
-### Conectar otro sistema (Controla Plus)
+### Conectar otro sistema
 
 Una fuente de datos es un objeto con un método `async obtenerCartera()` que
-devuelve el formato anterior (ver `src/fuentes/`). La conexión directa con
-Controla Plus está **pendiente**: depende de cómo ese sistema permita leer los
-datos (API, base de datos o exportación programada).
+devuelve el formato anterior (ver `src/fuentes/`).
+
+## Uso con Controla+
+
+El portal lee directamente de Controla+ (`src/fuentes/controla-plus.js`), en
+**solo lectura**: inicia sesión y consulta las rutas, el reporte de eficiencia
+de cobro y el reporte de antigüedad de mora. No crea ni modifica nada.
+
+Cada **ruta** de Controla+ es la cartera de un gestor.
+
+1. Lista las rutas para obtener el identificador de cada una:
+
+   ```bash
+   CONTROLA_USUARIO=... CONTROLA_CLAVE=... node bin/listar-rutas.js
+   ```
+
+2. Crea un usuario del portal por gestor, con el identificador de su ruta:
+
+   ```bash
+   node bin/crear-usuario.js --usuario ana --nombre "Ana Torres" --gestor <id-de-la-ruta>
+   ```
+
+3. Arranca el servidor:
+
+   ```bash
+   CONTROLA_USUARIO=... CONTROLA_CLAVE=... npm start
+   ```
+
+| Variable | Uso |
+|----------|-----|
+| `CONTROLA_USUARIO`, `CONTROLA_CLAVE` | Cuenta de Controla+ con la que se consulta. Se recomienda una cuenta propia del portal, no la del dueño |
+| `CONTROLA_SUCURSAL` | Identificador de la sucursal (por defecto, la principal) |
+| `PORTAL_CACHE_MS` | Cada cuánto se vuelve a consultar Controla+ (por defecto 60000) |
+| `PORTAL_METAS` | Ruta del archivo de metas (por defecto `datos/metas.json`) |
+
+Las credenciales se pasan solo por variables de entorno; nunca se guardan en
+el repositorio.
+
+Con Controla+ los indicadores se toman así:
+
+| Indicador | Origen |
+|-----------|--------|
+| Recuperación | Eficiencia de cobro del mes a la fecha: cobrado de las cuotas programadas ÷ cuotas programadas hasta hoy |
+| Mora | Saldo vencido ÷ saldo pendiente de los préstamos activos de la ruta |
+| Meta mensual | Total cobrado en el mes ÷ meta |
+
+### Metas mensuales
+
+Controla+ no maneja metas, así que se definen en `datos/metas.json`, por mes y
+por nombre (o identificador) de ruta:
+
+```json
+{
+  "2026-11": { "Ruta Norte": 150000, "Ruta Sur": 200000 }
+}
+```
+
+Mientras una ruta no tenga meta definida, el portal usa como meta provisional
+el cobro programado del mes y lo indica en pantalla.
 
 ## Seguridad
 

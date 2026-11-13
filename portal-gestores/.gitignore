@@ -1,3 +1,4 @@
-# Usuarios (hashes de claves) y datos reales de cartera: nunca al repositorio
+# Usuarios (hashes de claves), metas y datos reales de cartera: nunca al repositorio
 datos/usuarios.json
 datos/cartera.json
+datos/metas.json

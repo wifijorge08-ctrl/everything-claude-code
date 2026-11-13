@@ -7,6 +7,7 @@ const { fechaHoy } = require('./src/metricas');
 const { hashClave } = require('./src/auth');
 const { crearUsuariosEnMemoria, crearUsuariosDesdeArchivo } = require('./src/usuarios');
 const { crearFuenteArchivo } = require('./src/fuentes/archivo-json');
+const { crearFuenteControlaPlus } = require('./src/fuentes/controla-plus');
 const { crearFuenteDemo, GESTORES } = require('./src/fuentes/demo');
 
 const CLAVE_DEMO = 'demo1234';
@@ -39,10 +40,20 @@ async function main() {
     fuente = crearFuenteDemo({ fechaHoy: () => fechaHoy(zonaHoraria) });
     usuarios = await usuariosDemo();
   } else {
-    if (!env.PORTAL_ARCHIVO_CARTERA) {
-      throw new Error('Define PORTAL_ARCHIVO_CARTERA (ruta al JSON de cartera) o usa PORTAL_DEMO=1 para probar.');
+    if (env.CONTROLA_USUARIO) {
+      // Las credenciales llegan solo por variables de entorno; nunca se guardan en el repositorio.
+      fuente = crearFuenteControlaPlus({
+        usuario: env.CONTROLA_USUARIO,
+        clave: env.CONTROLA_CLAVE,
+        sucursal: env.CONTROLA_SUCURSAL,
+        archivoMetas: path.resolve(env.PORTAL_METAS || path.join(__dirname, 'datos', 'metas.json')),
+        cacheMs: Number(env.PORTAL_CACHE_MS || 60000)
+      });
+    } else if (env.PORTAL_ARCHIVO_CARTERA) {
+      fuente = crearFuenteArchivo(path.resolve(env.PORTAL_ARCHIVO_CARTERA));
+    } else {
+      throw new Error('Define CONTROLA_USUARIO y CONTROLA_CLAVE (Controla+), PORTAL_ARCHIVO_CARTERA (JSON) o PORTAL_DEMO=1.');
     }
-    fuente = crearFuenteArchivo(path.resolve(env.PORTAL_ARCHIVO_CARTERA));
     usuarios = crearUsuariosDesdeArchivo(path.resolve(env.PORTAL_USUARIOS || path.join(__dirname, 'datos', 'usuarios.json')));
   }
 
