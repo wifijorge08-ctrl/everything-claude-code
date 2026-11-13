@@ -1,0 +1,23 @@
+# Despliegue del portal de gestores (portal-gestores/) en Render.
+# Los valores marcados con "sync: false" se piden en pantalla al crear el
+# servicio y nunca se guardan en el repositorio.
+services:
+  - type: web
+    name: portal-gestores
+    runtime: node
+    plan: free
+    rootDir: portal-gestores
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: PORTAL_ZONA_HORARIA
+        value: America/Managua
+      - key: PORTAL_META_PORCENTAJE
+        value: "95"
+      - key: CONTROLA_USUARIO
+        sync: false
+      - key: CONTROLA_CLAVE
+        sync: false
+      - key: PORTAL_USUARIOS_JSON
+        sync: false
