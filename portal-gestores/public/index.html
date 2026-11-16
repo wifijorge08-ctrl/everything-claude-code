@@ -17,19 +17,20 @@
 <body>
   <main id="vista-login" class="login" hidden>
     <form id="form-login" class="login__caja" autocomplete="on">
-      <svg class="marca marca--grande" viewBox="0 0 32 32" aria-hidden="true">
+      <svg class="marca marca--grande js-marca" viewBox="0 0 32 32" aria-hidden="true">
         <rect class="marca__fondo" width="32" height="32" rx="8"></rect>
         <rect class="marca__barra" x="7" y="17" width="4" height="8" rx="1.5"></rect>
         <rect class="marca__barra" x="14" y="12" width="4" height="13" rx="1.5"></rect>
         <rect class="marca__barra" x="21" y="7" width="4" height="18" rx="1.5"></rect>
       </svg>
-      <h1>Portal de gestores</h1>
+      <img class="logo logo--grande js-logo" alt="" hidden>
+      <h1 class="js-nombre">Portal de gestores</h1>
       <p class="login__sub">Ingresa con tu usuario y tu clave para ver tu cartera.</p>
       <label for="usuario">Usuario</label>
       <input id="usuario" name="usuario" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required>
       <label for="clave">Clave</label>
       <input id="clave" name="clave" type="password" autocomplete="current-password" required>
-      <p id="error-login" class="aviso-error" role="alert" hidden></p>
+      <p id="error-login" class="aviso aviso--error" role="alert" hidden></p>
       <button id="boton-login" type="submit" class="boton">Ingresar</button>
       <p class="login__pie">Acceso exclusivo para personal autorizado.</p>
     </form>
@@ -39,23 +40,27 @@
     <header class="barra">
       <div class="barra__interior">
         <div class="barra__marca">
-          <svg class="marca" viewBox="0 0 32 32" aria-hidden="true">
+          <svg class="marca js-marca" viewBox="0 0 32 32" aria-hidden="true">
             <rect class="marca__fondo" width="32" height="32" rx="8"></rect>
             <rect class="marca__barra" x="7" y="17" width="4" height="8" rx="1.5"></rect>
             <rect class="marca__barra" x="14" y="12" width="4" height="13" rx="1.5"></rect>
             <rect class="marca__barra" x="21" y="7" width="4" height="18" rx="1.5"></rect>
           </svg>
+          <img class="logo js-logo" alt="" hidden>
           <div class="barra__titulos">
-            <span class="barra__titulo">Portal de gestores</span>
+            <span class="barra__titulo js-nombre">Portal de gestores</span>
             <span id="empresa" class="barra__empresa" hidden></span>
           </div>
         </div>
         <div class="barra__lado">
           <span id="estado" class="estado" role="status"></span>
-          <span id="avatar" class="avatar" aria-hidden="true"></span>
           <button id="salir" type="button" class="boton boton--discreto">Salir</button>
         </div>
       </div>
+      <nav id="pestanas" class="pestanas" aria-label="Secciones" hidden>
+        <button type="button" class="pestana" data-vista="panel" aria-current="page">Equipo</button>
+        <button type="button" class="pestana" data-vista="ajustes">Ajustes</button>
+      </nav>
     </header>
 
     <main class="pagina">
@@ -63,11 +68,32 @@
         <h1 id="saludo"></h1>
         <p id="periodo" class="encabezado__sub"></p>
       </div>
-      <div id="contenido" class="contenido" aria-live="polite"></div>
+      <div id="contenido" class="contenido"></div>
+      <div id="ajustes" class="contenido" hidden></div>
       <p id="pie" class="pie"></p>
+      <p class="pie"><button id="abrir-clave" type="button" class="boton boton--discreto boton--chico" hidden>Cambiar mi clave</button></p>
     </main>
   </div>
 
+  <dialog id="dialogo-clave" class="dialogo">
+    <form id="form-clave" class="formulario" method="dialog">
+      <h2>Cambiar mi clave</h2>
+      <label for="clave-actual">Clave actual</label>
+      <input id="clave-actual" type="password" autocomplete="current-password" required>
+      <label for="clave-nueva">Clave nueva (mínimo 8 caracteres)</label>
+      <input id="clave-nueva" type="password" autocomplete="new-password" minlength="8" required>
+      <label for="clave-repetir">Repite la clave nueva</label>
+      <input id="clave-repetir" type="password" autocomplete="new-password" minlength="8" required>
+      <p id="error-clave" class="aviso aviso--error" role="alert" hidden></p>
+      <div class="formulario__acciones">
+        <button type="button" id="cancelar-clave" class="boton boton--discreto">Cancelar</button>
+        <button type="submit" class="boton">Guardar clave</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="/app.js"></script>
+  <script src="/grafico.js"></script>
+  <script src="/ajustes.js"></script>
 </body>
 </html>

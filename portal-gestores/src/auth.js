@@ -57,6 +57,13 @@ class Sesiones {
     this.mapa.delete(token);
   }
 
+  /** Cierra todas las sesiones de un usuario (p. ej. al cambiarle la clave). */
+  eliminarDe(usuario) {
+    for (const [token, sesion] of this.mapa) {
+      if (sesion.usuario === usuario) this.mapa.delete(token);
+    }
+  }
+
   limpiarVencidas() {
     const ahora = this.reloj();
     for (const [token, sesion] of this.mapa) {

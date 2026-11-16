@@ -38,6 +38,20 @@ function apiFalsa() {
       currency: 'NIO',
       rows: [cuerpo.to.startsWith('2026-11-30') ? filaEficiencia(1000, 400, 500) : filaEficiencia(400, 300, 500)]
     }),
+    'GET /collection-calendar/day-detail': () => ({
+      clients: {
+        totalPages: 1,
+        content: [
+          { routeUuid: 'R1', clientFullName: 'Cliente Uno', amount: 100, amountPaid: 100, installmentNumber: 2, totalPayments: 10 },
+          { routeUuid: 'R1', clientFullName: 'Cliente Dos', amount: 50, amountPaid: 0, installmentNumber: 1, totalPayments: 5 }
+        ]
+      }
+    }),
+    'GET /collection-calendar/day-payments': () => ({ payments: { totalPages: 1, content: [{ routeUuid: 'R1', amount: 40 }] } }),
+    'GET /collection-calendar/monthly-summary': () => ({ days: { '2026-11-12': { totalAmount: 150 } } }),
+    'POST /payment-promise/search': () => ({
+      content: [{ clientFullName: 'Cliente Dos', promiseDate: '2026-11-14T06:00:00Z', promisedAmount: 50, fulfilledAmount: 0 }]
+    }),
     'POST /reports/aging': cuerpo => ({
       generatedAt: '2026-11-12T20:00:00Z',
       pageInfo: { totalPages: 2 },
@@ -81,12 +95,25 @@ test('Controla+: arma la cartera por ruta y solo hace consultas', async () => {
   assert.equal(r.meta.recaudado, 500);
   assert.equal(r.meta.origen, 'programado');
 
+  assert.deepEqual({ ...r.hoy, clientes: r.hoy.clientes.length },
+    { programado: 150, cobrado: 100, porcentaje: 66.7, total: 2, pendientes: 1, clientes: 2 });
+  assert.equal(r.hoy.clientes[0].cliente, 'Cliente Dos');
+  assert.equal(r.serie.length, 30);
+  assert.deepEqual(r.serie[11], { dia: 12, programado: 150, cobrado: 40 });
+  assert.equal(r.serie[12].cobrado, null);
+  assert.deepEqual(r.promesas, [{ cliente: 'Cliente Dos', fecha: '2026-11-14', monto: 50, cumplido: 0 }]);
+  assert.equal(r.mesAnterior.cobrado, 500);
+
   const usadas = new Set(llamadas.map(l => `${l.metodo} ${l.ruta}`));
   assert.deepEqual([...usadas].sort(), [
     'GET /branch/get-all-by-company/EMP',
+    'GET /collection-calendar/day-detail',
+    'GET /collection-calendar/day-payments',
+    'GET /collection-calendar/monthly-summary',
     'GET /company/get-one/EMP',
     'GET /route/get-all',
     'POST /auth/login',
+    'POST /payment-promise/search',
     'POST /reports/aging',
     'POST /reports/collection-efficiency'
   ]);

@@ -5,11 +5,16 @@ const fs = require('fs');
 const path = require('path');
 const { calcularResumen, calcularEquipo, fechaHoy } = require('./metricas');
 const { Sesiones, Limitador, hashClave, verificarClave } = require('./auth');
+const { crearAlmacen } = require('./almacen');
+const { crearAdmin } = require('./admin');
+const { CABECERAS_SEGURIDAD, leerCookie, responderJson, leerCuerpoJson } = require('./http-util');
 
 const PUBLICO = path.join(__dirname, '..', 'public');
 const ESTATICOS = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
+  '/grafico.js': ['grafico.js', 'text/javascript; charset=utf-8'],
+  '/ajustes.js': ['ajustes.js', 'text/javascript; charset=utf-8'],
   '/estilos.css': ['estilos.css', 'text/css; charset=utf-8'],
   '/icono.svg': ['icono.svg', 'image/svg+xml'],
   '/icono-180.png': ['icono-180.png', 'image/png'],
@@ -17,71 +22,23 @@ const ESTATICOS = {
   '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json; charset=utf-8']
 };
 const COOKIE = 'sid';
-const LIMITE_CUERPO = 10 * 1024;
-
-const CABECERAS_SEGURIDAD = {
-  'Content-Security-Policy': "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
-  'X-Content-Type-Options': 'nosniff',
-  'Referrer-Policy': 'no-referrer',
-  'X-Frame-Options': 'DENY'
-};
-
-function leerCookie(req, nombre) {
-  for (const parte of String(req.headers.cookie || '').split(';')) {
-    const [clave, ...resto] = parte.trim().split('=');
-    if (clave === nombre) return resto.join('=');
-  }
-  return null;
-}
-
-function responderJson(res, estado, cuerpo, cabeceras = {}) {
-  res.writeHead(estado, {
-    ...CABECERAS_SEGURIDAD,
-    'Content-Type': 'application/json; charset=utf-8',
-    'Cache-Control': 'no-store',
-    ...cabeceras
-  });
-  res.end(JSON.stringify(cuerpo));
-}
-
-function leerCuerpoJson(req) {
-  return new Promise((resolve, reject) => {
-    if (!String(req.headers['content-type'] || '').startsWith('application/json')) {
-      reject(Object.assign(new Error('Se esperaba JSON'), { estado: 415 }));
-      return;
-    }
-    let total = 0;
-    const trozos = [];
-    req.on('data', trozo => {
-      total += trozo.length;
-      if (total > LIMITE_CUERPO) {
-        reject(Object.assign(new Error('Cuerpo demasiado grande'), { estado: 413 }));
-        req.destroy();
-        return;
-      }
-      trozos.push(trozo);
-    });
-    req.on('end', () => {
-      try {
-        resolve(JSON.parse(Buffer.concat(trozos).toString('utf8') || '{}'));
-      } catch (_err) {
-        reject(Object.assign(new Error('JSON invalido'), { estado: 400 }));
-      }
-    });
-    req.on('error', reject);
-  });
-}
 
 /**
  * @param {object} opciones
  * @param {{obtenerCartera: () => Promise<object>}} opciones.fuente
- * @param {{buscar: (usuario: string) => object|null}} opciones.usuarios
+ * @param {{buscar: (usuario: string) => object|null}} [opciones.usuarios] usuarios de solo lectura
+ * @param {object} [opciones.almacen] donde se guardan los cambios hechos desde el portal
+ * @param {{nombre?: string, tema?: string, ocultas?: string[]}} [opciones.marca] valores por defecto
  */
-function crearApp({ fuente, usuarios, zonaHoraria, cookieSegura = true, intervaloMs = 5000, sesiones, limitador }) {
-  const almacenSesiones = sesiones || new Sesiones();
-  const intentos = limitador || new Limitador();
+function crearApp(opciones) {
+  const { fuente, usuarios, zonaHoraria, cookieSegura = true, intervaloMs = 5000, marca } = opciones;
+  const almacenSesiones = opciones.sesiones || new Sesiones();
+  const intentos = opciones.limitador || new Limitador();
+  const almacen = opciones.almacen || crearAlmacen(null);
   const hashSenuelo = hashClave('clave-inexistente');
   const hoy = () => fechaHoy(zonaHoraria);
+  const admin = crearAdmin({ almacen, fuente, sesiones: almacenSesiones, hoy, marca });
+  const buscarUsuario = nombre => admin.buscarUsuario(nombre) || (usuarios ? usuarios.buscar(nombre) : null);
 
   function cookieDeSesion(token, maxAge) {
     const partes = [`${COOKIE}=${token}`, 'HttpOnly', 'SameSite=Strict', 'Path=/', `Max-Age=${maxAge}`];
@@ -94,20 +51,23 @@ function crearApp({ fuente, usuarios, zonaHoraria, cookieSegura = true, interval
     const cartera = await fuente.obtenerCartera();
     // La fuente puede fijar la fecha de negocio (en su propia zona horaria).
     const dia = cartera.hoy || hoy();
+    const comun = { empresa: cartera.empresa || null, moneda: cartera.moneda || null };
     if (sesion.rol === 'admin') {
+      const ocultas = new Set(admin.rutasOcultas());
+      const idsOcultos = new Set((cartera.gestores || [])
+        .filter(g => ocultas.has(g.id) || ocultas.has(g.ruta))
+        .map(g => g.id));
       return {
         tipo: 'admin',
-        empresa: cartera.empresa || null,
-        moneda: cartera.moneda || null,
+        ...comun,
         actualizado: cartera.actualizado || null,
-        equipo: calcularEquipo(cartera, dia)
+        equipo: calcularEquipo(cartera, dia).filter(g => !idsOcultos.has(g.gestorId))
       };
     }
     const gestor = (cartera.gestores || []).find(g => g && g.id === sesion.gestorId);
     return {
       tipo: 'gestor',
-      empresa: cartera.empresa || null,
-      moneda: cartera.moneda || null,
+      ...comun,
       cartera: gestor ? gestor.ruta || gestor.nombre : null,
       resumen: calcularResumen(cartera, sesion.gestorId, dia)
     };
@@ -122,7 +82,7 @@ function crearApp({ fuente, usuarios, zonaHoraria, cookieSegura = true, interval
       responderJson(res, 429, { error: 'Demasiados intentos. Espera unos minutos e intenta de nuevo.' });
       return;
     }
-    const registro = usuarios.buscar(usuario);
+    const registro = buscarUsuario(usuario);
     // Se verifica siempre un hash para no revelar por tiempo si el usuario existe.
     const valida = await verificarClave(clave, registro ? registro.clave : await hashSenuelo);
     if (!registro || !valida) {
@@ -193,9 +153,11 @@ function crearApp({ fuente, usuarios, zonaHoraria, cookieSegura = true, interval
   }
 
   async function atender(req, res) {
-    const ruta = new URL(req.url, 'http://localhost').pathname;
+    const url = new URL(req.url, 'http://localhost');
+    const ruta = url.pathname;
 
     if (req.method === 'GET' && ESTATICOS[ruta]) return servirEstatico(res, ruta);
+    if (admin.publico(req, res, ruta)) return undefined;
     if (ruta === '/api/login' && req.method === 'POST') return iniciarSesion(req, res);
 
     const token = leerCookie(req, COOKIE);
@@ -209,12 +171,19 @@ function crearApp({ fuente, usuarios, zonaHoraria, cookieSegura = true, interval
     if (!sesion) return responderJson(res, 401, { error: 'Inicia sesión para continuar.' });
 
     if (req.method === 'GET' && ruta === '/api/yo') {
-      return responderJson(res, 200, { usuario: sesion.usuario, nombre: sesion.nombre, rol: sesion.rol });
+      return responderJson(res, 200, {
+        usuario: sesion.usuario,
+        nombre: sesion.nombre,
+        rol: sesion.rol,
+        // Solo se puede cambiar la clave de usuarios guardados en el almacen.
+        puedeCambiarClave: almacen.editable && Boolean(admin.buscarUsuario(sesion.usuario))
+      });
     }
     if (req.method === 'GET' && ruta === '/api/vista') {
       return responderJson(res, 200, await vistaPara(sesion));
     }
     if (req.method === 'GET' && ruta === '/api/eventos') return transmitir(req, res, token);
+    if (await admin.privado(req, res, ruta, sesion, url.searchParams)) return undefined;
     return responderJson(res, 404, { error: 'No encontrado' });
   }
 

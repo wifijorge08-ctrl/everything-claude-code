@@ -21,6 +21,9 @@
   const formatoPct = new Intl.NumberFormat('es', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   let simbolo = '$';
   let eventos = null;
+  let yo = null;
+  let marca = { nombre: null, tema: 'azul', logo: null };
+  let seccion = 'panel';
 
   const dinero = n => `${simbolo}${formatoMonto.format(n || 0)}`;
   const sinDato = n => n === null || n === undefined;
@@ -173,6 +176,73 @@
       ...antiguedad(mora));
   }
 
+  function tarjetaHoy(r) {
+    const h = r.hoy;
+    if (!h) return null;
+    if (h.total === 0) {
+      return el('section', 'tarjeta', el('h2', null, 'Cobros de hoy'), el('p', 'vacio', 'No tienes cuotas programadas para hoy.'));
+    }
+    const lista = el('ul', 'cobros');
+    for (const c of h.clientes) {
+      const pagado = c.pagado >= c.monto;
+      const parcial = !pagado && c.pagado > 0;
+      const estado = pagado ? 'Pagado' : parcial ? `Abonó ${dinero(c.pagado)}` : 'Pendiente';
+      lista.append(el('li', `cobro${pagado ? ' cobro--pagado' : ''}`,
+        icono(pagado ? 'bien' : 'neutro'),
+        el('div', 'cobro__quien',
+          el('span', 'cobro__nombre', c.cliente),
+          el('span', 'cobro__detalle', [c.cuota ? `Cuota ${c.cuota}` : null, estado].filter(Boolean).join(' · '))),
+        el('strong', 'num', dinero(c.monto))));
+    }
+    const completo = h.pendientes === 0;
+    return el('section', 'tarjeta',
+      el('div', 'tarjeta__cabecera',
+        el('h2', null, 'Cobros de hoy'),
+        insignia(completo ? 'Todo cobrado' : plural(h.pendientes, 'pendiente', 'pendientes'), completo ? 'bien' : 'neutro')),
+      el('p', 'cifra', dinero(h.cobrado)),
+      el('p', 'cifra-sub', `cobrados de ${dinero(h.programado)} programados para hoy`),
+      medidor(h.porcentaje, 'acento', `Cobrado hoy: ${pct(h.porcentaje)} de lo programado`),
+      lista);
+  }
+
+  function tarjetaTendencia(r) {
+    if (!r.serie || !window.Portal.grafico) return null;
+    const anterior = r.mesAnterior;
+    return el('section', 'tarjeta',
+      el('h2', null, 'Avance del mes, día por día'),
+      window.Portal.grafico(r.serie),
+      anterior
+        ? el('div', 'filas', fila(`Mes anterior (${nombreDeMes(anterior.mes)})`,
+          `${dinero(anterior.cobrado)}${sinDato(anterior.recuperacion) ? '' : ` · ${pct(anterior.recuperacion)} de recuperación`}`))
+        : null);
+  }
+
+  function tarjetaPromesas(r) {
+    if (!Array.isArray(r.promesas)) return null;
+    if (r.promesas.length === 0) {
+      return el('section', 'tarjeta', el('h2', null, 'Promesas de pago'), el('p', 'vacio', 'No hay promesas de pago pendientes.'));
+    }
+    const hoy = `${r.mes}-${String(r.dia).padStart(2, '0')}`;
+    const cuerpo = el('tbody');
+    for (const p of r.promesas) {
+      const [, mes, dia] = p.fecha.split('-');
+      const cuando = p.fecha === hoy ? 'Hoy' : `${Number(dia)} de ${MESES[Number(mes) - 1] || ''}`;
+      cuerpo.append(el('tr', null,
+        el('td', null, p.cliente),
+        el('td', null, p.fecha && p.fecha < hoy ? insignia(`Venció el ${cuando}`, 'alerta') : cuando),
+        el('td', 'num', dinero(p.monto))));
+    }
+    return el('section', 'tarjeta',
+      el('h2', null, 'Promesas de pago'),
+      el('div', 'tabla-scroll', el('table', null,
+        el('thead', null, el('tr', null, el('th', null, 'Cliente'), el('th', null, 'Prometió pagar'), el('th', 'num', 'Monto'))),
+        cuerpo)));
+  }
+
+  function nombreDeMes(mes) {
+    return MESES[Number(String(mes).split('-')[1]) - 1] || mes;
+  }
+
   function tablaMorosos(r) {
     const clientes = r.mora.clientes || [];
     if (clientes.length === 0) return null;
@@ -192,7 +262,8 @@
   }
 
   function vistaGestor(r) {
-    return [tarjetaMeta(r), el('div', 'rejilla', tarjetaRecuperacion(r), tarjetaMora(r)), tablaMorosos(r)];
+    return [tarjetaHoy(r), tarjetaMeta(r), el('div', 'rejilla', tarjetaRecuperacion(r), tarjetaMora(r)),
+      tarjetaTendencia(r), tarjetaPromesas(r), tablaMorosos(r)];
   }
 
   /* ---------- Vista del administrador ---------- */
@@ -214,6 +285,7 @@
       mora: razon(vencido, saldo),
       vencido,
       saldo,
+      hoy: equipo.some(g => g.hoy) ? { programado: suma(g => g.hoy && g.hoy.programado), cobrado: suma(g => g.hoy && g.hoy.cobrado) } : null,
       enMora: suma(g => g.mora.clientesEnMora),
       clientes: suma(g => g.mora.clientesTotal)
     };
@@ -239,6 +311,13 @@
             el('span', null, `Falta ${dinero(Math.max(t.meta - t.cobrado, 0))}`))
           : null),
       el('div', 'rejilla',
+        t.hoy
+          ? el('section', 'tarjeta',
+            el('h2', null, 'Cobros de hoy'),
+            el('p', 'cifra', dinero(t.hoy.cobrado)),
+            el('p', 'cifra-sub', `de ${dinero(t.hoy.programado)} programados para hoy`),
+            medidor(razon(t.hoy.cobrado, t.hoy.programado), 'acento', `Cobrado hoy: ${pct(razon(t.hoy.cobrado, t.hoy.programado))}`))
+          : null,
         el('section', 'tarjeta',
           el('h2', null, 'Recuperación del equipo'),
           cifra(t.recuperacion),
@@ -260,14 +339,16 @@
       el('p', 'metrica__pie', pie));
   }
 
-  function tarjetaGestor(g) {
+  function tarjetaGestor(g, posicion) {
     const partes = /^(.*?)\s*\((.*)\)$/.exec(g.nombre);
     const [texto, tono] = g.meta ? RITMOS[g.meta.ritmo] : ['Sin meta', 'neutro'];
     return el('article', 'tarjeta gestor',
       el('div', 'tarjeta__cabecera',
-        el('div', null,
-          el('h3', null, partes ? partes[1] : g.nombre),
-          partes ? el('p', 'gestor__cobrador', partes[2]) : null),
+        el('div', 'gestor__quien',
+          el('span', 'gestor__puesto', String(posicion)),
+          el('div', null,
+            el('h3', null, partes ? partes[1] : g.nombre),
+            partes ? el('p', 'gestor__cobrador', partes[2]) : null)),
         insignia(texto, tono)),
       el('div', 'gestor__metricas',
         metrica('Meta', g.meta ? g.meta.cumplimiento : null, g.meta ? tono : 'neutro',
@@ -275,15 +356,23 @@
         metrica('Recuperación', g.recuperacion.porcentaje, 'acento',
           `${dinero(g.recuperacion.recaudado)} de ${dinero(g.recuperacion.porCobrar)}`),
         metrica('Mora', g.mora.indice, estadoMora(g.mora.indice)[1],
-          `${dinero(g.mora.saldoVencido)} vencidos · ${g.mora.clientesEnMora} de ${plural(g.mora.clientesTotal, 'cliente', 'clientes')}`)));
+          `${dinero(g.mora.saldoVencido)} vencidos · ${g.mora.clientesEnMora} de ${plural(g.mora.clientesTotal, 'cliente', 'clientes')}`),
+        g.hoy
+          ? metrica('Hoy', g.hoy.porcentaje, 'acento',
+            g.hoy.total ? `${dinero(g.hoy.cobrado)} de ${dinero(g.hoy.programado)} · ${plural(g.hoy.pendientes, 'pendiente', 'pendientes')}` : 'Sin cuotas hoy')
+          : null));
   }
 
   function vistaAdmin(equipo) {
     if (equipo.length === 0) return [el('section', 'tarjeta', el('p', 'vacio', 'Todavía no hay carteras para mostrar.'))];
+    // Ranking: primero quien lleva mayor avance de su meta.
+    const avance = g => (g.meta && !sinDato(g.meta.cumplimiento) ? g.meta.cumplimiento : -1);
+    const ordenado = equipo.slice().sort((a, b) => avance(b) - avance(a));
     return [
       ...resumenEquipo(totales(equipo)),
-      el('h2', 'titulo-seccion', `Gestores (${equipo.length})`),
-      el('div', 'gestores', ...equipo.map(tarjetaGestor))
+      el('h2', 'titulo-seccion', 'Ranking de gestores'),
+      el('p', 'titulo-seccion__sub', 'Ordenado por avance de la meta del mes.'),
+      el('div', 'gestores', ...ordenado.map((g, i) => tarjetaGestor(g, i + 1)))
     ];
   }
 
@@ -300,18 +389,49 @@
     }
     if (vista.cartera) partes.push(`cartera ${vista.cartera}`);
     $('periodo').textContent = partes.join(' · ');
-    $('empresa').textContent = vista.empresa || '';
-    $('empresa').hidden = !vista.empresa;
+    const empresa = vista.empresa && vista.empresa !== marca.nombre ? vista.empresa : '';
+    $('empresa').textContent = empresa;
+    $('empresa').hidden = !empresa;
     const nodos = vista.tipo === 'admin' ? vistaAdmin(vista.equipo) : vistaGestor(vista.resumen);
     $('contenido').replaceChildren(...nodos.filter(Boolean));
     const hora = new Date().toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    $('pie').textContent = `Datos actualizados a las ${hora}. La pantalla se actualiza sola.`;
+    $('pie').textContent = seccion === 'panel' ? `Datos actualizados a las ${hora}. La pantalla se actualiza sola.` : '';
     estado('En vivo', 'bien');
   }
 
   function estado(texto, tono) {
     $('estado').textContent = texto;
     $('estado').className = `estado estado--${tono}`;
+  }
+
+  function aplicarMarca(nueva) {
+    marca = { ...marca, ...nueva };
+    const nombre = marca.nombre || 'Portal de gestores';
+    document.title = nombre;
+    document.documentElement.dataset.tema = marca.tema || 'azul';
+    for (const nodo of document.querySelectorAll('.js-nombre')) nodo.textContent = nombre;
+    for (const nodo of document.querySelectorAll('.js-logo')) {
+      nodo.hidden = !marca.logo;
+      if (marca.logo) nodo.src = marca.logo;
+    }
+    for (const nodo of document.querySelectorAll('.js-marca')) nodo.style.display = marca.logo ? 'none' : '';
+  }
+
+  function irA(destino) {
+    seccion = destino;
+    $('contenido').hidden = destino !== 'panel';
+    $('ajustes').hidden = destino !== 'ajustes';
+    for (const boton of document.querySelectorAll('.pestana')) {
+      if (boton.dataset.vista === destino) boton.setAttribute('aria-current', 'page');
+      else boton.removeAttribute('aria-current');
+    }
+    $('saludo').textContent = destino === 'ajustes' ? 'Ajustes' : saludo();
+    if (destino === 'ajustes' && window.Portal.ajustes) window.Portal.ajustes($('ajustes'));
+  }
+
+  function saludo() {
+    if (!yo) return '';
+    return yo.rol === 'admin' ? 'Panel del equipo' : `Hola, ${String(yo.nombre || yo.usuario).trim().split(/\s+/)[0]}`;
   }
 
   function mostrarCarga() {
@@ -355,14 +475,14 @@
       mostrarLogin();
       return;
     }
-    const yo = await respuesta.json();
-    const nombres = String(yo.nombre || yo.usuario).trim().split(/\s+/);
-    $('saludo').textContent = yo.rol === 'admin' ? 'Panel del equipo' : `Hola, ${nombres[0]}`;
-    $('avatar').textContent = nombres.slice(0, 2).map(n => n[0].toUpperCase()).join('');
+    yo = await respuesta.json();
+    $('pestanas').hidden = yo.rol !== 'admin';
+    $('abrir-clave').hidden = !yo.puedeCambiarClave;
     $('vista-login').hidden = true;
     $('vista-panel').hidden = false;
     estado('Conectando', 'neutro');
     mostrarCarga();
+    irA('panel');
     conectar();
   }
 
@@ -399,5 +519,16 @@
     mostrarLogin();
   });
 
-  window.addEventListener('pageshow', iniciar);
+  for (const boton of document.querySelectorAll('.pestana')) {
+    boton.addEventListener('click', () => irA(boton.dataset.vista));
+  }
+
+  // Utilidades compartidas con grafico.js y ajustes.js.
+  window.Portal = { $, el, dinero, pct, plural, insignia, fila, aplicarMarca, mostrarLogin };
+
+  window.addEventListener('pageshow', async () => {
+    const configuracion = await fetch('/api/config').then(r => (r.ok ? r.json() : null)).catch(() => null);
+    if (configuracion) aplicarMarca(configuracion);
+    iniciar();
+  });
 })();

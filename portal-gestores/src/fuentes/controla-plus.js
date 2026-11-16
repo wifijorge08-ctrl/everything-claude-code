@@ -6,20 +6,25 @@ const { fechaHoy } = require('../metricas');
 /**
  * Fuente de datos: Controla+ (api.controlaplus.com.mx).
  *
- * SOLO LECTURA. Usa unicamente el inicio de sesion y cinco consultas:
- *   - /company/get-one             nombre de la empresa
- *   - /branch/get-all-by-company   sucursales
- *   - /route/get-all               rutas y cobrador asignado (ruta = gestor)
- *   - /reports/collection-efficiency  esperado y cobrado por ruta
- *   - /reports/aging               saldo, vencido y dias de mora por prestamo
+ * SOLO LECTURA. Usa unicamente el inicio de sesion y estas consultas:
+ *   - /company/get-one                   nombre de la empresa
+ *   - /branch/get-all-by-company         sucursales
+ *   - /route/get-all                     rutas y cobrador asignado (ruta = gestor)
+ *   - /reports/collection-efficiency     esperado y cobrado por ruta
+ *   - /reports/aging                     saldo, vencido y dias de mora por prestamo
+ *   - /collection-calendar/day-detail    cuotas programadas para hoy
+ *   - /collection-calendar/day-payments  pagos recibidos cada dia
+ *   - /collection-calendar/monthly-summary  cobro programado por dia
+ *   - /payment-promise/search            promesas de pago pendientes
  *
- * Los dos reportes se piden con POST porque asi los expone Controla+, pero son
- * consultas: no crean ni modifican nada.
+ * Los reportes y la busqueda de promesas se piden con POST porque asi los
+ * expone Controla+, pero son consultas: no crean ni modifican nada.
  */
 
 const BASE = 'https://api.controlaplus.com.mx';
 const MARGEN_TOKEN_MS = 5 * 60 * 1000;
 const MAX_PAGINAS = 100;
+const MINUTO = 60 * 1000;
 
 function venceToken(token) {
   try {
@@ -31,15 +36,27 @@ function venceToken(token) {
 }
 
 function leerMetas(fijas, ruta, mes) {
-  if (fijas) return fijas[mes] || {};
+  const todas = typeof fijas === 'function' ? fijas() : fijas;
+  if (todas) return todas[mes] || {};
   if (!ruta) return {};
   try {
-    const todas = JSON.parse(fs.readFileSync(ruta, 'utf8'));
-    return (todas && todas[mes]) || {};
+    const delArchivo = JSON.parse(fs.readFileSync(ruta, 'utf8'));
+    return (delArchivo && delArchivo[mes]) || {};
   } catch (err) {
     if (err.code !== 'ENOENT') console.error(`[portal-gestores] metas (${ruta}): ${err.message}`);
     return {};
   }
+}
+
+function dosDigitos(n) {
+  return String(n).padStart(2, '0');
+}
+
+function mesAnteriorDe(mes) {
+  const [anio, numero] = mes.split('-').map(Number);
+  const fecha = new Date(Date.UTC(anio, numero - 2, 1));
+  const ultimo = new Date(Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth() + 1, 0)).getUTCDate();
+  return { mes: `${fecha.getUTCFullYear()}-${dosDigitos(fecha.getUTCMonth() + 1)}`, ultimo };
 }
 
 function crearFuenteControlaPlus(opciones) {
@@ -60,6 +77,7 @@ function crearFuenteControlaPlus(opciones) {
   let sesion = null;
   let cache = null;
   let enCurso = null;
+  const memoria = new Map();
 
   async function iniciarSesion() {
     const res = await fetchImpl(`${base}/auth/login`, {
@@ -100,6 +118,35 @@ function crearFuenteControlaPlus(opciones) {
     return cuerpo.data;
   }
 
+  /** Guarda el resultado de una consulta durante ttlMs para no repetirla en cada refresco. */
+  async function conCache(llave, ttlMs, consulta) {
+    const ahora = reloj().getTime();
+    const previo = memoria.get(llave);
+    if (previo && ahora - previo.momento < ttlMs) return previo.valor;
+    const valor = await consulta();
+    memoria.set(llave, { valor, momento: ahora });
+    if (memoria.size > 500) memoria.delete(memoria.keys().next().value);
+    return valor;
+  }
+
+  /** Los datos complementarios no deben tumbar el tablero si una consulta falla. */
+  async function opcional(nombre, consulta, porDefecto) {
+    try {
+      return await consulta();
+    } catch (err) {
+      console.error(`[portal-gestores] ${nombre}: ${err.message}`);
+      return porDefecto;
+    }
+  }
+
+  async function enLotes(elementos, tamano, tarea) {
+    const resultados = [];
+    for (let i = 0; i < elementos.length; i += tamano) {
+      resultados.push(...(await Promise.all(elementos.slice(i, i + tamano).map(tarea))));
+    }
+    return resultados;
+  }
+
   async function resolverSucursal() {
     if (sesion.sucursal) return sesion.sucursal;
     const lista = (await pedir('GET', `/branch/get-all-by-company/${sesion.empresa}`)) || [];
@@ -136,6 +183,111 @@ function crearFuenteControlaPlus(opciones) {
     return { filas, generado };
   }
 
+  /** Cuotas programadas para hoy en toda la sucursal (cada una trae su ruta). */
+  async function cobrosDeHoy(sucursalId, hoy) {
+    const filas = [];
+    for (let pagina = 0; pagina < MAX_PAGINAS; pagina++) {
+      const datos = await pedir('GET',
+        `/collection-calendar/day-detail?date=${hoy}&branchUuid=${sucursalId}&page=${pagina}&size=200&isToday=true`);
+      const clientes = datos.clients || {};
+      filas.push(...(clientes.content || []));
+      if (!(clientes.totalPages > pagina + 1)) break;
+    }
+    return filas.map(f => ({
+      gestorId: f.routeUuid,
+      cliente: f.clientFullName,
+      monto: f.amount,
+      pagado: f.amountPaid,
+      cuota: f.installmentNumber && f.totalPayments ? `${f.installmentNumber}/${f.totalPayments}` : null
+    }));
+  }
+
+  /** Total pagado en una fecha, por ruta. */
+  async function pagosDelDia(sucursalId, fecha) {
+    const porRuta = {};
+    for (let pagina = 0; pagina < MAX_PAGINAS; pagina++) {
+      const datos = await pedir('GET',
+        `/collection-calendar/day-payments?date=${fecha}&branchUuid=${sucursalId}&page=${pagina}&size=200`);
+      const pagos = datos.payments || {};
+      for (const p of pagos.content || []) porRuta[p.routeUuid] = (porRuta[p.routeUuid] || 0) + (Number(p.amount) || 0);
+      if (!(pagos.totalPages > pagina + 1)) break;
+    }
+    return porRuta;
+  }
+
+  /** Cobrado y programado de cada dia del mes, por ruta. */
+  async function serieDelMes(sucursalId, rutas, hoy) {
+    const mes = hoy.slice(0, 7);
+    const [anio, mesNumero, diaHoy] = hoy.split('-').map(Number);
+    const ultimoDia = new Date(Date.UTC(anio, mesNumero, 0)).getUTCDate();
+    const fechas = Array.from({ length: ultimoDia }, (_, i) => `${mes}-${dosDigitos(i + 1)}`);
+
+    // Los dias pasados cambian poco: se consultan cada 30 minutos; hoy, en cada refresco.
+    const pasadas = fechas.slice(0, diaHoy - 1);
+    const pagosPasados = await enLotes(pasadas, 6, fecha =>
+      conCache(`pagos:${fecha}`, 30 * MINUTO, () => pagosDelDia(sucursalId, fecha)));
+    const pagos = new Map(pasadas.map((fecha, i) => [fecha, pagosPasados[i]]));
+    pagos.set(hoy, await pagosDelDia(sucursalId, hoy));
+
+    const programado = await enLotes(rutas, 5, r =>
+      conCache(`programado:${mes}:${r.uuid}`, 10 * MINUTO, async () => {
+        const datos = await pedir('GET',
+          `/collection-calendar/monthly-summary?month=${mesNumero}&year=${anio}&branchUuid=${sucursalId}&routeUuid=${r.uuid}`);
+        return datos.days || {};
+      }));
+
+    const serie = [];
+    rutas.forEach((r, i) => {
+      for (const fecha of fechas) {
+        const delDia = pagos.get(fecha);
+        serie.push({
+          gestorId: r.uuid,
+          fecha,
+          programado: (programado[i][fecha] && programado[i][fecha].totalAmount) || 0,
+          cobrado: delDia ? delDia[r.uuid] || 0 : null
+        });
+      }
+    });
+    return serie;
+  }
+
+  async function promesasPendientes(sucursalId, rutas) {
+    const listas = await enLotes(rutas, 5, r =>
+      conCache(`promesas:${r.uuid}`, 5 * MINUTO, async () => {
+        const datos = await pedir('POST', '/payment-promise/search', {
+          branchUuid: sucursalId,
+          routeUuid: r.uuid,
+          status: 'PENDING',
+          size: 50
+        });
+        return ((datos && datos.content) || []).map(p => ({
+          gestorId: r.uuid,
+          cliente: p.clientFullName || p.clientName || (p.client && (p.client.fullName || p.client.name)) || 'Cliente',
+          fecha: String(p.promiseDate || '').slice(0, 10),
+          monto: Number(p.promisedAmount) || 0,
+          cumplido: Number(p.fulfilledAmount) || 0
+        }));
+      }));
+    return listas.flat();
+  }
+
+  async function mesAnterior(sucursalId, mes) {
+    const anterior = mesAnteriorDe(mes);
+    return conCache(`anterior:${anterior.mes}`, 60 * MINUTO, async () => {
+      const datos = await pedir('POST', '/reports/collection-efficiency', {
+        branchUuid: sucursalId,
+        from: `${anterior.mes}-01T00:00:00Z`,
+        to: `${anterior.mes}-${dosDigitos(anterior.ultimo)}T23:59:59Z`
+      });
+      return (datos.rows || []).map(f => ({
+        gestorId: f.routeUuid,
+        mes: anterior.mes,
+        cobrado: f.totalCollected || 0,
+        recuperacion: f.collectionEfficiency === undefined ? null : f.collectionEfficiency
+      }));
+    });
+  }
+
   async function consultar() {
     if (!sesion) await iniciarSesion();
     const sucursalId = await resolverSucursal();
@@ -150,11 +302,18 @@ function crearFuenteControlaPlus(opciones) {
       nombreEmpresa(),
       pedir('GET', `/route/get-all?branch=${sucursalId}&page=0&size=500`),
       pedir('POST', '/reports/collection-efficiency', rango(hoy)),
-      pedir('POST', '/reports/collection-efficiency', rango(`${mes}-${String(ultimoDia).padStart(2, '0')}`)),
+      pedir('POST', '/reports/collection-efficiency', rango(`${mes}-${dosDigitos(ultimoDia)}`)),
       prestamos(sucursalId)
     ]);
 
     const listaRutas = (rutas.content || []).filter(r => r.isActive !== false);
+    const [cobrosHoy, serie, promesas, anterior] = await Promise.all([
+      opcional('cobros de hoy', () => cobrosDeHoy(sucursalId, hoy), null),
+      opcional('serie del mes', () => serieDelMes(sucursalId, listaRutas, hoy), null),
+      opcional('promesas de pago', () => promesasPendientes(sucursalId, listaRutas), null),
+      opcional('mes anterior', () => mesAnterior(sucursalId, mes), [])
+    ]);
+
     const metasDefinidas = leerMetas(metasFijas, archivoMetas, mes);
     const filaDelMes = new Map((delMes.rows || []).map(f => [f.routeUuid, f]));
     const filaALaFecha = new Map((aLaFecha.rows || []).map(f => [f.routeUuid, f]));
@@ -205,12 +364,20 @@ function crearFuenteControlaPlus(opciones) {
         diasMora: f.daysPastDue
       })),
       recaudo,
-      metas
+      metas,
+      cobrosHoy,
+      serie,
+      promesas,
+      mesAnterior: anterior
     };
   }
 
   return {
     nombre: 'controla-plus',
+    /** Fuerza una consulta nueva (p. ej. tras cambiar una meta). */
+    invalidar() {
+      cache = null;
+    },
     async obtenerCartera() {
       const ahora = reloj().getTime();
       if (cache && ahora - cache.momento < cacheMs) return cache.datos;

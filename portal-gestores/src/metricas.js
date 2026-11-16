@@ -145,8 +145,77 @@ function calcularResumen(cartera, gestorId, hoy) {
       aLaFecha: Boolean(agregado && agregado.aLaFecha)
     },
     mora: calcularMora(creditos),
-    meta: resumenMeta
+    meta: resumenMeta,
+    hoy: cobrosDeHoy(cartera, gestorId),
+    serie: serieDiaria(cartera, gestorId, pagos, mes, diasDelMes, dia),
+    promesas: promesasDe(cartera, gestorId),
+    mesAnterior: (cartera.mesAnterior || []).find(m => m && m.gestorId === gestorId) || null
   };
+}
+
+/** Cuotas programadas para hoy; null si la fuente no las entrega. */
+function cobrosDeHoy(cartera, gestorId) {
+  if (!Array.isArray(cartera.cobrosHoy)) return null;
+  const clientes = cartera.cobrosHoy
+    .filter(c => c && c.gestorId === gestorId)
+    .map(c => ({
+      cliente: String(c.cliente || 'Cliente'),
+      monto: redondear(monto(c.monto)),
+      pagado: redondear(monto(c.pagado)),
+      cuota: c.cuota || null
+    }))
+    // Primero lo que falta por cobrar, de mayor a menor.
+    .sort((a, b) => (b.monto - b.pagado) - (a.monto - a.pagado));
+  const programado = clientes.reduce((s, c) => s + c.monto, 0);
+  const cobrado = clientes.reduce((s, c) => s + Math.min(c.pagado, c.monto), 0);
+  return {
+    programado: redondear(programado),
+    cobrado: redondear(cobrado),
+    porcentaje: porcentaje(cobrado, programado),
+    total: clientes.length,
+    pendientes: clientes.filter(c => c.pagado < c.monto).length,
+    clientes
+  };
+}
+
+/** Un punto por dia del mes: programado y cobrado (cobrado null en dias futuros). */
+function serieDiaria(cartera, gestorId, pagos, mes, diasDelMes, dia) {
+  if (Array.isArray(cartera.serie)) {
+    const puntos = cartera.serie
+      .filter(p => p && p.gestorId === gestorId && String(p.fecha).slice(0, 7) === mes)
+      .map(p => ({
+        dia: Number(String(p.fecha).slice(8, 10)),
+        programado: redondear(monto(p.programado)),
+        cobrado: p.cobrado === null || p.cobrado === undefined ? null : redondear(monto(p.cobrado))
+      }))
+      .sort((a, b) => a.dia - b.dia);
+    return puntos.length ? puntos : null;
+  }
+  if (pagos.length === 0) return null;
+  const porDia = new Map();
+  for (const p of pagos) {
+    const d = Number(p.fecha.slice(8, 10));
+    porDia.set(d, (porDia.get(d) || 0) + monto(p.monto));
+  }
+  return Array.from({ length: diasDelMes }, (_, i) => ({
+    dia: i + 1,
+    programado: null,
+    cobrado: i + 1 <= dia ? redondear(porDia.get(i + 1) || 0) : null
+  }));
+}
+
+function promesasDe(cartera, gestorId) {
+  if (!Array.isArray(cartera.promesas)) return null;
+  return cartera.promesas
+    .filter(p => p && p.gestorId === gestorId)
+    .map(p => ({
+      cliente: String(p.cliente || 'Cliente'),
+      fecha: String(p.fecha || ''),
+      monto: redondear(monto(p.monto)),
+      cumplido: redondear(monto(p.cumplido))
+    }))
+    .sort((a, b) => a.fecha.localeCompare(b.fecha))
+    .slice(0, 20);
 }
 
 function idsDeGestores(cartera) {
@@ -163,7 +232,11 @@ function calcularEquipo(cartera, hoy) {
   return idsDeGestores(cartera)
     .map(id => {
       const resumen = calcularResumen(cartera, id, hoy);
+      // El administrador ve totales por gestor, no el detalle de cada cliente.
       delete resumen.mora.clientes;
+      delete resumen.serie;
+      if (resumen.hoy) delete resumen.hoy.clientes;
+      resumen.promesas = resumen.promesas ? resumen.promesas.length : null;
       return { ...resumen, nombre: nombres.get(id) || id };
     })
     .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));

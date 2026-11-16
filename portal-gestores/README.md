@@ -7,7 +7,15 @@ y clave y ve, en vivo, **solo los datos de su cartera**:
 - **Mora**: índice de mora, saldo vencido, clientes en mora y tramos por días.
 - **Meta mensual**: avance, faltante y si va al ritmo necesario para cumplirla.
 
-El administrador ve una tabla con los tres indicadores de todo el equipo.
+Además, cuando la fuente de datos lo entrega (Controla+ lo hace):
+
+- **Cobros de hoy**: las cuotas programadas para el día, cuáles ya se pagaron y cuánto falta.
+- **Avance día por día**: gráfico de lo cobrado contra lo programado, y el dato del mes anterior.
+- **Promesas de pago** pendientes de sus clientes.
+
+El administrador ve los totales del equipo, un ranking de gestores por avance
+de la meta y una pantalla de **Ajustes** para definir metas, administrar
+usuarios, elegir nombre, color y logo, y ocultar carteras de su panel.
 
 No tiene dependencias externas: solo necesita Node.js 18 o superior.
 
@@ -88,8 +96,9 @@ devuelve el formato anterior (ver `src/fuentes/`).
 ## Uso con Controla+
 
 El portal lee directamente de Controla+ (`src/fuentes/controla-plus.js`), en
-**solo lectura**: inicia sesión y consulta las rutas, el reporte de eficiencia
-de cobro y el reporte de antigüedad de mora. No crea ni modifica nada.
+**solo lectura**: inicia sesión y consulta las rutas, los reportes de eficiencia
+de cobro y de antigüedad de mora, el calendario de cobros (cuotas y pagos por
+día) y las promesas de pago pendientes. No crea ni modifica nada.
 
 Cada **ruta** de Controla+ es la cartera de un gestor.
 
@@ -147,6 +156,25 @@ Mientras una ruta no tenga meta definida, el portal calcula la meta como un
 porcentaje (`PORTAL_META_PORCENTAJE`) del cobro programado del mes en
 Controla+ y lo indica en pantalla. Ese monto se mueve durante el mes si se
 otorgan préstamos nuevos; una meta definida queda fija.
+
+## Ajustes desde el portal
+
+Para que el administrador pueda guardar cambios desde la pantalla de Ajustes
+(metas, usuarios, claves, nombre, color, logo y carteras ocultas), el servidor
+necesita una carpeta en un disco que no se borre al reiniciar:
+
+| Variable | Uso |
+|----------|-----|
+| `PORTAL_DIR_DATOS` | Carpeta donde se guarda `portal.json` (y el logo). Debe estar en un disco persistente |
+| `PORTAL_NOMBRE` | Nombre que se muestra, si no se ha cambiado en Ajustes |
+| `PORTAL_TEMA` | Color: `azul`, `verde`, `morado` o `grafito` |
+| `PORTAL_RUTAS_OCULTAS` | Carteras que no aparecen en el panel del administrador, separadas por comas (nombre o identificador) |
+
+Sin `PORTAL_DIR_DATOS` el portal funciona igual, pero Ajustes queda en solo
+lectura y nadie puede cambiar su clave: es preferible a aceptar cambios que se
+perderían en el siguiente reinicio. La primera vez, los usuarios se toman de
+`PORTAL_USUARIOS_JSON` (o de `datos/usuarios.json`); desde el primer cambio
+manda lo guardado en el disco.
 
 ## Publicar en internet
 
