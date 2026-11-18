@@ -226,6 +226,25 @@ function idsDeGestores(cartera) {
   return [...ids].sort();
 }
 
+/**
+ * Interes cobrado por un gestor en el mes. Solo se calcula para la vista del
+ * administrador: es un dato de rentabilidad, no de la gestion de cobro.
+ */
+function interesDe(cartera, gestorId, mes) {
+  const fila = (cartera.interes || []).find(i => i && i.gestorId === gestorId && i.mes === mes);
+  if (!fila) return null;
+  const cobrado = monto(fila.cobrado);
+  return {
+    cobrado: redondear(cobrado),
+    capital: redondear(monto(fila.capital)),
+    total: redondear(monto(fila.total)),
+    programadoALaFecha: redondear(monto(fila.programadoALaFecha)),
+    programadoMes: redondear(monto(fila.programadoMes)),
+    hoy: fila.hoy === null || fila.hoy === undefined ? null : redondear(monto(fila.hoy)),
+    porcentaje: porcentaje(cobrado, monto(fila.programadoALaFecha))
+  };
+}
+
 /** Vista del administrador: un resumen por cada gestor. */
 function calcularEquipo(cartera, hoy) {
   const nombres = new Map((cartera.gestores || []).filter(Boolean).map(g => [g.id, g.nombre]));
@@ -237,6 +256,7 @@ function calcularEquipo(cartera, hoy) {
       delete resumen.serie;
       if (resumen.hoy) delete resumen.hoy.clientes;
       resumen.promesas = resumen.promesas ? resumen.promesas.length : null;
+      resumen.interes = interesDe(cartera, id, resumen.mes);
       return { ...resumen, nombre: nombres.get(id) || id };
     })
     .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));

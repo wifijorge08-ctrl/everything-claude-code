@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { crearFuenteControlaPlus } = require('../src/fuentes/controla-plus');
-const { calcularResumen } = require('../src/metricas');
+const { calcularResumen, calcularEquipo } = require('../src/metricas');
 
 function tokenFalso(segundos) {
   const carga = Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + segundos })).toString('base64url');
@@ -17,7 +17,10 @@ function apiFalsa() {
     routeUuid: 'R1',
     expectedCollection: esperado,
     collected: cobrado,
-    totalCollected: total
+    totalCollected: total,
+    interestCollected: 120,
+    capitalCollected: total - 120,
+    expectedInterest: esperado / 4
   });
   const respuestas = {
     'POST /auth/login': () => ({
@@ -47,7 +50,7 @@ function apiFalsa() {
         ]
       }
     }),
-    'GET /collection-calendar/day-payments': () => ({ payments: { totalPages: 1, content: [{ routeUuid: 'R1', amount: 40 }] } }),
+    'GET /collection-calendar/day-payments': () => ({ payments: { totalPages: 1, content: [{ routeUuid: 'R1', amount: 40, interestPaid: 9 }] } }),
     'GET /collection-calendar/monthly-summary': () => ({ days: { '2026-11-12': { totalAmount: 150 } } }),
     'POST /payment-promise/search': () => ({
       content: [{ clientFullName: 'Cliente Dos', promiseDate: '2026-11-14T06:00:00Z', promisedAmount: 50, fulfilledAmount: 0 }]
@@ -103,6 +106,12 @@ test('Controla+: arma la cartera por ruta y solo hace consultas', async () => {
   assert.equal(r.serie[12].cobrado, null);
   assert.deepEqual(r.promesas, [{ cliente: 'Cliente Dos', fecha: '2026-11-14', monto: 50, cumplido: 0 }]);
   assert.equal(r.mesAnterior.cobrado, 500);
+  // El interes no llega a la vista del gestor, solo a la del administrador.
+  assert.equal(r.interes, undefined);
+  const [equipo] = calcularEquipo(cartera, cartera.hoy);
+  assert.deepEqual(equipo.interes, {
+    cobrado: 120, capital: 380, total: 500, programadoALaFecha: 100, programadoMes: 250, hoy: 9, porcentaje: 120
+  });
 
   const usadas = new Set(llamadas.map(l => `${l.metodo} ${l.ruta}`));
   assert.deepEqual([...usadas].sort(), [

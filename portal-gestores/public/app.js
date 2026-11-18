@@ -331,6 +331,54 @@
     ];
   }
 
+  /** Interés cobrado: solo llega en la vista del administrador. */
+  function tarjetaInteres(equipo) {
+    const conDato = equipo.filter(g => g.interes);
+    if (conDato.length === 0) return null;
+    const suma = campo => conDato.reduce((s, g) => s + (g.interes[campo] || 0), 0);
+    const cobrado = suma('cobrado');
+    const programadoMes = suma('programadoMes');
+    const programadoALaFecha = suma('programadoALaFecha');
+    const hayHoy = conDato.some(g => g.interes.hoy !== null);
+    const parte = razon(cobrado, suma('total'));
+
+    const cuerpo = el('tbody');
+    for (const g of conDato.slice().sort((a, b) => b.interes.cobrado - a.interes.cobrado)) {
+      const partes = /^(.*?)\s*\((.*)\)$/.exec(g.nombre);
+      cuerpo.append(el('tr', null,
+        el('td', null, partes ? partes[1] : g.nombre),
+        hayHoy ? el('td', 'num', dinero(g.interes.hoy)) : null,
+        el('td', 'num', dinero(g.interes.cobrado)),
+        el('td', 'num', pct(g.interes.porcentaje))));
+    }
+    return el('section', 'tarjeta',
+      el('h2', null, 'Interés cobrado en el mes'),
+      el('p', 'cifra', dinero(cobrado)),
+      el('p', 'cifra-sub', sinDato(parte) ? 'Sin cobros este mes' : `${pct(parte)} de todo lo cobrado en el mes es interés`),
+      programadoMes > 0
+        ? medidor(razon(cobrado, programadoMes), 'acento',
+          `Interés cobrado: ${pct(razon(cobrado, programadoMes))} del interés programado del mes.`,
+          { marca: razon(programadoALaFecha, programadoMes) })
+        : null,
+      programadoMes > 0
+        ? el('div', 'medidor__pie',
+          el('span', null, `Programado a hoy: ${dinero(programadoALaFecha)}`),
+          el('span', null, `Del mes: ${dinero(programadoMes)}`))
+        : null,
+      el('div', 'filas',
+        fila('Interés de hoy', hayHoy ? dinero(suma('hoy')) : 'Sin datos'),
+        fila('Capital recuperado en el mes', dinero(suma('capital'))),
+        fila('Cobrado del interés programado a hoy', pct(razon(cobrado, programadoALaFecha)))),
+      el('div', 'tabla-scroll', el('table', null,
+        el('thead', null, el('tr', null,
+          el('th', null, 'Cartera'),
+          hayHoy ? el('th', 'num', 'Hoy') : null,
+          el('th', 'num', 'En el mes'),
+          el('th', 'num', '% programado'))),
+        cuerpo)),
+      el('p', 'tarjeta__nota', 'Solo tú ves este dato; los gestores no. Se actualiza con cada pago registrado en Controla+.'));
+  }
+
   function metrica(etiqueta, valor, tono, pie) {
     return el('div', 'metrica',
       el('span', 'metrica__etiqueta', etiqueta),
@@ -368,8 +416,11 @@
     // Ranking: primero quien lleva mayor avance de su meta.
     const avance = g => (g.meta && !sinDato(g.meta.cumplimiento) ? g.meta.cumplimiento : -1);
     const ordenado = equipo.slice().sort((a, b) => avance(b) - avance(a));
+    const [cobradoMes, ...resto] = resumenEquipo(totales(equipo));
     return [
-      ...resumenEquipo(totales(equipo)),
+      cobradoMes,
+      tarjetaInteres(equipo),
+      ...resto,
       el('h2', 'titulo-seccion', 'Ranking de gestores'),
       el('p', 'titulo-seccion__sub', 'Ordenado por avance de la meta del mes.'),
       el('div', 'gestores', ...ordenado.map((g, i) => tarjetaGestor(g, i + 1)))

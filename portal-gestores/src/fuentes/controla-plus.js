@@ -202,21 +202,25 @@ function crearFuenteControlaPlus(opciones) {
     }));
   }
 
-  /** Total pagado en una fecha, por ruta. */
+  /** Total pagado en una fecha, por ruta, y cuanto de eso fue interes. */
   async function pagosDelDia(sucursalId, fecha) {
     const porRuta = {};
     for (let pagina = 0; pagina < MAX_PAGINAS; pagina++) {
       const datos = await pedir('GET',
         `/collection-calendar/day-payments?date=${fecha}&branchUuid=${sucursalId}&page=${pagina}&size=200`);
       const pagos = datos.payments || {};
-      for (const p of pagos.content || []) porRuta[p.routeUuid] = (porRuta[p.routeUuid] || 0) + (Number(p.amount) || 0);
+      for (const p of pagos.content || []) {
+        const ruta = porRuta[p.routeUuid] || (porRuta[p.routeUuid] = { monto: 0, interes: 0 });
+        ruta.monto += Number(p.amount) || 0;
+        ruta.interes += Number(p.interestPaid) || 0;
+      }
       if (!(pagos.totalPages > pagina + 1)) break;
     }
     return porRuta;
   }
 
   /** Cobrado y programado de cada dia del mes, por ruta. */
-  async function serieDelMes(sucursalId, rutas, hoy) {
+  async function serieDelMes(sucursalId, rutas, hoy, pagosHoy) {
     const mes = hoy.slice(0, 7);
     const [anio, mesNumero, diaHoy] = hoy.split('-').map(Number);
     const ultimoDia = new Date(Date.UTC(anio, mesNumero, 0)).getUTCDate();
@@ -227,7 +231,7 @@ function crearFuenteControlaPlus(opciones) {
     const pagosPasados = await enLotes(pasadas, 6, fecha =>
       conCache(`pagos:${fecha}`, 30 * MINUTO, () => pagosDelDia(sucursalId, fecha)));
     const pagos = new Map(pasadas.map((fecha, i) => [fecha, pagosPasados[i]]));
-    pagos.set(hoy, await pagosDelDia(sucursalId, hoy));
+    pagos.set(hoy, pagosHoy || (await pagosDelDia(sucursalId, hoy)));
 
     const programado = await enLotes(rutas, 5, r =>
       conCache(`programado:${mes}:${r.uuid}`, 10 * MINUTO, async () => {
@@ -244,7 +248,7 @@ function crearFuenteControlaPlus(opciones) {
           gestorId: r.uuid,
           fecha,
           programado: (programado[i][fecha] && programado[i][fecha].totalAmount) || 0,
-          cobrado: delDia ? delDia[r.uuid] || 0 : null
+          cobrado: delDia ? (delDia[r.uuid] && delDia[r.uuid].monto) || 0 : null
         });
       }
     });
@@ -307,22 +311,72 @@ function crearFuenteControlaPlus(opciones) {
     ]);
 
     const listaRutas = (rutas.content || []).filter(r => r.isActive !== false);
+    // Los pagos de hoy se consultan en cada refresco: dan el interes cobrado hoy y el ultimo punto del grafico.
+    const pagosHoy = await opcional('pagos de hoy', () => pagosDelDia(sucursalId, hoy), null);
     const [cobrosHoy, serie, promesas, anterior] = await Promise.all([
       opcional('cobros de hoy', () => cobrosDeHoy(sucursalId, hoy), null),
-      opcional('serie del mes', () => serieDelMes(sucursalId, listaRutas, hoy), null),
+      opcional('serie del mes', () => serieDelMes(sucursalId, listaRutas, hoy, pagosHoy), null),
       opcional('promesas de pago', () => promesasPendientes(sucursalId, listaRutas), null),
       opcional('mes anterior', () => mesAnterior(sucursalId, mes), [])
     ]);
 
-    const metasDefinidas = leerMetas(metasFijas, archivoMetas, mes);
+    const { metas, recaudo, interes } = porRuta({
+      rutas: listaRutas,
+      mes,
+      aLaFecha,
+      delMes,
+      pagosHoy,
+      metasDefinidas: leerMetas(metasFijas, archivoMetas, mes)
+    });
+
+    return {
+      hoy,
+      empresa,
+      moneda: aLaFecha.currency || sesion.moneda,
+      actualizado: cartera.generado || reloj().toISOString(),
+      gestores: listaRutas.map(r => ({
+        id: r.uuid,
+        ruta: r.name,
+        nombre: r.assignedEmployee_fullName ? `${r.name} (${r.assignedEmployee_fullName.trim()})` : r.name
+      })),
+      creditos: cartera.filas.map(f => ({
+        id: f.loanUuid,
+        cliente: f.clientName,
+        gestorId: f.routeUuid,
+        saldo: f.outstandingBalance,
+        saldoVencido: f.totalOverdue,
+        diasMora: f.daysPastDue
+      })),
+      recaudo,
+      metas,
+      interes,
+      cobrosHoy,
+      serie,
+      promesas,
+      mesAnterior: anterior
+    };
+  }
+
+  /** Recaudo, meta e interes de cada ruta a partir de los reportes de eficiencia. */
+  function porRuta({ rutas, mes, aLaFecha, delMes, pagosHoy, metasDefinidas }) {
     const filaDelMes = new Map((delMes.rows || []).map(f => [f.routeUuid, f]));
     const filaALaFecha = new Map((aLaFecha.rows || []).map(f => [f.routeUuid, f]));
-
     const metas = [];
     const recaudo = [];
-    for (const r of listaRutas) {
+    const interes = [];
+    for (const r of rutas) {
       const fecha = filaALaFecha.get(r.uuid) || {};
       const completo = filaDelMes.get(r.uuid) || {};
+      interes.push({
+        gestorId: r.uuid,
+        mes,
+        cobrado: fecha.interestCollected || 0,
+        capital: fecha.capitalCollected || 0,
+        total: fecha.totalCollected || 0,
+        programadoALaFecha: fecha.expectedInterest || 0,
+        programadoMes: completo.expectedInterest || 0,
+        hoy: pagosHoy ? (pagosHoy[r.uuid] && pagosHoy[r.uuid].interes) || 0 : null
+      });
       recaudo.push({
         gestorId: r.uuid,
         mes,
@@ -345,31 +399,7 @@ function crearFuenteControlaPlus(opciones) {
       }
     }
 
-    return {
-      hoy,
-      empresa,
-      moneda: aLaFecha.currency || sesion.moneda,
-      actualizado: cartera.generado || reloj().toISOString(),
-      gestores: listaRutas.map(r => ({
-        id: r.uuid,
-        ruta: r.name,
-        nombre: r.assignedEmployee_fullName ? `${r.name} (${r.assignedEmployee_fullName.trim()})` : r.name
-      })),
-      creditos: cartera.filas.map(f => ({
-        id: f.loanUuid,
-        cliente: f.clientName,
-        gestorId: f.routeUuid,
-        saldo: f.outstandingBalance,
-        saldoVencido: f.totalOverdue,
-        diasMora: f.daysPastDue
-      })),
-      recaudo,
-      metas,
-      cobrosHoy,
-      serie,
-      promesas,
-      mesAnterior: anterior
-    };
+    return { metas, recaudo, interes };
   }
 
   return {
