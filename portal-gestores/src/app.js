@@ -175,8 +175,8 @@ function crearApp(opciones) {
         usuario: sesion.usuario,
         nombre: sesion.nombre,
         rol: sesion.rol,
-        // Solo se puede cambiar la clave de usuarios guardados en el almacen.
-        puedeCambiarClave: almacen.editable && Boolean(admin.buscarUsuario(sesion.usuario))
+        // Solo el administrador cambia claves, y solo si hay donde guardarlas.
+        puedeCambiarClave: sesion.rol === 'admin' && almacen.editable && Boolean(admin.buscarUsuario(sesion.usuario))
       });
     }
     if (req.method === 'GET' && ruta === '/api/vista') {

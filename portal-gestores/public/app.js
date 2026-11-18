@@ -575,7 +575,7 @@
   }
 
   // Utilidades compartidas con grafico.js y ajustes.js.
-  window.Portal = { $, el, dinero, pct, plural, insignia, fila, aplicarMarca, mostrarLogin };
+  window.Portal = { $, el, dinero, pct, plural, insignia, fila, aplicarMarca, mostrarLogin, usuarioActual: () => yo };
 
   window.addEventListener('pageshow', async () => {
     const configuracion = await fetch('/api/config').then(r => (r.ok ? r.json() : null)).catch(() => null);

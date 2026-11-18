@@ -92,6 +92,24 @@
     </form>
   </dialog>
 
+  <dialog id="dialogo-clave-usuario" class="dialogo">
+    <form id="form-clave-usuario" class="formulario" method="dialog">
+      <h2 id="titulo-clave-usuario">Cambiar clave</h2>
+      <p class="tarjeta__ayuda">Escribe una clave nueva o genera una. Al guardarla se cierra la sesión que tenga abierta y tendrá que entrar con la nueva.</p>
+      <label for="clave-usuario">Clave nueva (mínimo 8 caracteres)</label>
+      <div class="campo-con-boton">
+        <input id="clave-usuario" type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" minlength="8" required>
+        <button type="button" id="generar-clave" class="boton boton--discreto">Generar</button>
+      </div>
+      <p id="error-clave-usuario" class="aviso aviso--error" role="alert" hidden></p>
+      <p id="listo-clave-usuario" class="aviso aviso--bien" role="status" hidden></p>
+      <div class="formulario__acciones">
+        <button type="button" id="cerrar-clave-usuario" class="boton boton--discreto">Cancelar</button>
+        <button type="submit" id="guardar-clave-usuario" class="boton">Guardar clave</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="/app.js"></script>
   <script src="/grafico.js"></script>
   <script src="/ajustes.js"></script>

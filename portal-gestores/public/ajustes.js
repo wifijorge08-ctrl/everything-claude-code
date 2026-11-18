@@ -93,6 +93,30 @@
       }));
   }
 
+  /** Clave legible: sin letras que se confundan (l, 1, o, 0). */
+  function claveAleatoria() {
+    const letras = 'abcdefghjkmnpqrstuvwxyz23456789';
+    const bytes = new Uint8Array(32);
+    window.crypto.getRandomValues(bytes);
+    const elegidos = [...bytes].filter(b => b < 248).slice(0, 12).map(b => letras[b % letras.length]);
+    return [0, 4, 8].map(i => elegidos.slice(i, i + 4).join('')).join('-');
+  }
+
+  let usuarioObjetivo = null;
+
+  function abrirCambioDeClave(u) {
+    usuarioObjetivo = u;
+    $('titulo-clave-usuario').textContent = `Cambiar la clave de ${u.nombre || u.usuario}`;
+    $('clave-usuario').value = '';
+    $('clave-usuario').readOnly = false;
+    $('error-clave-usuario').hidden = true;
+    $('listo-clave-usuario').hidden = true;
+    $('guardar-clave-usuario').hidden = false;
+    $('generar-clave').hidden = false;
+    $('cerrar-clave-usuario').textContent = 'Cancelar';
+    $('dialogo-clave-usuario').showModal();
+  }
+
   function seccionUsuarios(datos, recargar) {
     const nombreRuta = new Map(datos.rutas.map(r => [r.id, r.nombre]));
     const usuario = entrada({ type: 'text', autocapitalize: 'none', autocomplete: 'off', spellcheck: false, disabled: !datos.editable });
@@ -102,7 +126,9 @@
     const clave = entrada({ type: 'password', autocomplete: 'new-password', disabled: !datos.editable, placeholder: 'Mínimo 8 caracteres' });
     const campoCartera = campo('Cartera', cartera);
     rol.addEventListener('change', () => { campoCartera.hidden = rol.value !== 'gestor'; });
+    const campoClave = campo('Clave', clave);
     const titulo = el('h3', 'subtitulo', 'Agregar usuario');
+    const actual = window.Portal.usuarioActual();
 
     function editar(u) {
       usuario.value = u.usuario;
@@ -110,15 +136,17 @@
       rol.value = u.rol;
       if (u.gestorId) cartera.value = u.gestorId;
       campoCartera.hidden = u.rol !== 'gestor';
+      // La clave de un usuario existente se cambia con su botón «Cambiar clave».
       clave.value = '';
-      clave.placeholder = 'Déjala vacía para no cambiarla';
+      campoClave.hidden = true;
       titulo.textContent = `Editar a ${u.usuario}`;
       usuario.focus();
     }
 
     const cuerpo = el('tbody');
     for (const u of datos.usuarios) {
-      const acciones = el('td', 'num');
+      const botones = el('div', 'acciones');
+      const acciones = el('td', 'celda-acciones', botones);
       if (datos.editable) {
         const cambiar = boton('Editar', 'boton--discreto boton--chico');
         cambiar.addEventListener('click', () => editar(u));
@@ -132,7 +160,10 @@
             window.alert(err.message);
           }
         });
-        acciones.append(cambiar, ' ', borrar);
+        const claveNueva = boton('Cambiar clave', 'boton--discreto boton--chico');
+        claveNueva.addEventListener('click', () => abrirCambioDeClave(u));
+        if (actual && u.usuario === actual.usuario) botones.append(cambiar);
+        else botones.append(claveNueva, cambiar, borrar);
       }
       cuerpo.append(el('tr', null,
         el('td', null, el('strong', null, u.usuario), el('div', 'tenue celda-sub', u.nombre || '')),
@@ -148,7 +179,7 @@
         el('thead', null, el('tr', null, el('th', null, 'Usuario'), el('th', null, 'Ve'), el('th', 'num', ''))),
         cuerpo)),
       titulo,
-      el('div', 'campos', campo('Usuario', usuario), campo('Nombre', nombre), campo('Rol', rol), campoCartera, campo('Clave', clave)),
+      el('div', 'campos', campo('Usuario', usuario), campo('Nombre', nombre), campo('Rol', rol), campoCartera, campoClave),
       conResultado(guardar, async () => {
         await pedir('POST', '/api/admin/usuarios', {
           usuario: usuario.value, nombre: nombre.value, rol: rol.value, gestorId: cartera.value, clave: clave.value || undefined
@@ -222,7 +253,37 @@
     contenedor.replaceChildren(...[aviso, seccionMetas(datos, recargar), seccionUsuarios(datos, recargar), seccionApariencia(datos, recargar)].filter(Boolean));
   };
 
-  /* ---------- Cambio de clave propio ---------- */
+  /* ---------- Cambio de clave de otro usuario (solo administrador) ---------- */
+
+  $('generar-clave').addEventListener('click', () => {
+    $('clave-usuario').value = claveAleatoria();
+    $('clave-usuario').select();
+  });
+  $('cerrar-clave-usuario').addEventListener('click', () => $('dialogo-clave-usuario').close());
+  $('form-clave-usuario').addEventListener('submit', async evento => {
+    evento.preventDefault();
+    const error = $('error-clave-usuario');
+    const listo = $('listo-clave-usuario');
+    const clave = $('clave-usuario').value.trim();
+    error.hidden = true;
+    $('guardar-clave-usuario').disabled = true;
+    try {
+      await pedir('POST', '/api/admin/clave', { usuario: usuarioObjetivo.usuario, clave });
+      listo.textContent = `Listo. Entrégale a ${usuarioObjetivo.nombre || usuarioObjetivo.usuario} su usuario «${usuarioObjetivo.usuario}» y la clave nueva. No se vuelve a mostrar.`;
+      listo.hidden = false;
+      $('clave-usuario').readOnly = true;
+      $('guardar-clave-usuario').hidden = true;
+      $('generar-clave').hidden = true;
+      $('cerrar-clave-usuario').textContent = 'Cerrar';
+    } catch (err) {
+      error.textContent = err.message;
+      error.hidden = false;
+    } finally {
+      $('guardar-clave-usuario').disabled = false;
+    }
+  });
+
+  /* ---------- Cambio de clave propio (administrador) ---------- */
 
   const dialogo = $('dialogo-clave');
   $('abrir-clave').addEventListener('click', () => {

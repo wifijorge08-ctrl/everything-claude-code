@@ -109,18 +109,42 @@ test('el administrador guarda metas, usuarios, apariencia y carteras ocultas', a
   assert.equal(crearAlmacen(dir).datos().ajustes.nombre, 'Mi Empresa');
 });
 
-test('cada usuario cambia su propia clave; el logo solo acepta imagenes', async t => {
+test('solo el administrador cambia claves', async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const { pedir, entrar } = await levantar(t, dir);
   const ana = (await entrar('ana')).cookie;
-  assert.equal((await pedir(ana, 'GET', '/api/yo')).datos.puedeCambiarClave, true);
-  assert.equal((await pedir(ana, 'POST', '/api/clave', { actual: 'incorrecta', nueva: 'clave-nueva-33' })).estado, 400);
-  assert.equal((await pedir(ana, 'POST', '/api/clave', { actual: 'clave-de-prueba', nueva: 'corta' })).estado, 400);
-  assert.equal((await pedir(ana, 'POST', '/api/clave', { actual: 'clave-de-prueba', nueva: 'clave-nueva-33' })).estado, 200);
+
+  // Un gestor no puede cambiar ni su clave ni la de nadie.
+  assert.equal((await pedir(ana, 'GET', '/api/yo')).datos.puedeCambiarClave, false);
+  assert.equal((await pedir(ana, 'POST', '/api/clave', { actual: 'clave-de-prueba', nueva: 'clave-nueva-33' })).estado, 403);
+  assert.equal((await pedir(ana, 'POST', '/api/admin/clave', { usuario: 'jefe', clave: 'clave-nueva-33' })).estado, 403);
+  assert.equal((await entrar('jefe')).estado, 200);
+
+  const jefe = (await entrar('jefe')).cookie;
+  assert.equal((await pedir(jefe, 'GET', '/api/yo')).datos.puedeCambiarClave, true);
+  assert.equal((await pedir(jefe, 'POST', '/api/admin/clave', { usuario: 'ana', clave: 'corta' })).estado, 400);
+  assert.equal((await pedir(jefe, 'POST', '/api/admin/clave', { usuario: 'nadie', clave: 'clave-nueva-33' })).estado, 404);
+  assert.equal((await pedir(jefe, 'POST', '/api/admin/clave', { usuario: 'jefe', clave: 'clave-nueva-33' })).estado, 400);
+  assert.equal((await pedir(jefe, 'POST', '/api/admin/clave', { usuario: 'ana', clave: 'clave-nueva-33' })).estado, 200);
+  // La sesion abierta de ana se cierra, su clave vieja deja de servir y la nueva funciona.
+  assert.equal((await pedir(ana, 'GET', '/api/vista')).estado, 401);
   assert.equal((await entrar('ana')).estado, 401);
   assert.equal((await entrar('ana', 'clave-nueva-33')).estado, 200);
+  // Rol, nombre y cartera no cambian.
+  assert.equal((await pedir((await entrar('ana', 'clave-nueva-33')).cookie, 'GET', '/api/vista')).datos.resumen.gestorId, 'G01');
 
+  // El administrador cambia la suya confirmando la actual.
+  assert.equal((await pedir(jefe, 'POST', '/api/clave', { actual: 'incorrecta', nueva: 'clave-jefe-44' })).estado, 400);
+  assert.equal((await pedir(jefe, 'POST', '/api/clave', { actual: 'clave-de-prueba', nueva: 'clave-jefe-44' })).estado, 200);
+  assert.equal((await entrar('jefe', 'clave-jefe-44')).estado, 200);
+});
+
+test('el logo solo acepta imagenes', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'portal-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const { pedir, entrar } = await levantar(t, dir);
+  const ana = (await entrar('ana')).cookie;
   const jefe = (await entrar('jefe')).cookie;
   const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
   assert.equal((await pedir(jefe, 'PUT', '/api/admin/logo', svg, 'image/svg+xml')).estado, 400);

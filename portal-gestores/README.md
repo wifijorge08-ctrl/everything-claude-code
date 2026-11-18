@@ -159,6 +159,11 @@ otorgan préstamos nuevos; una meta definida queda fija.
 
 ## Ajustes desde el portal
 
+Solo el administrador cambia claves: la suya (confirmando la actual) y la de
+cualquier otro usuario, con el botón «Cambiar clave» de la lista de usuarios,
+que también puede generar una clave al azar. Al cambiarle la clave a alguien se
+cierran sus sesiones abiertas. Los gestores no pueden cambiar ninguna clave.
+
 Para que el administrador pueda guardar cambios desde la pantalla de Ajustes
 (metas, usuarios, claves, nombre, color, logo y carteras ocultas), el servidor
 necesita una carpeta en un disco que no se borre al reiniciar:

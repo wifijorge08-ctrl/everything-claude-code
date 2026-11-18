@@ -167,7 +167,9 @@ function crearAdmin({ almacen, fuente, sesiones, hoy, marca = {} }) {
     responderJson(res, 200, { ok: true, marca: configuracion() });
   }
 
+  /** El administrador cambia su propia clave; debe confirmar la actual. */
   async function cambiarMiClave(req, res, sesion) {
+    exigirAdmin(sesion);
     const cuerpo = await leerCuerpoJson(req);
     const registro = usuarios().find(u => u.usuario === sesion.usuario);
     if (!registro || !(await verificarClave(String(cuerpo.actual || ''), registro.clave))) {
@@ -180,6 +182,32 @@ function crearAdmin({ almacen, fuente, sesiones, hoy, marca = {} }) {
     });
     responderJson(res, 200, { ok: true });
   }
+
+  /** El administrador asigna una clave nueva a otro usuario y le cierra las sesiones abiertas. */
+  async function cambiarClaveDe(req, res, sesion) {
+    const cuerpo = await leerCuerpoJson(req);
+    const nombreUsuario = String(cuerpo.usuario || '').trim().toLowerCase();
+    if (nombreUsuario === sesion.usuario) throw errorHttp(400, 'Para tu propia clave usa «Cambiar mi clave».');
+    if (!usuarios().some(u => u.usuario === nombreUsuario)) throw errorHttp(404, 'Ese usuario no existe.');
+    validarClave(cuerpo.clave);
+    const nueva = await hashClave(cuerpo.clave);
+    almacen.cambiar(datos => {
+      datos.usuarios = usuarios().map(u => (u.usuario === nombreUsuario ? { ...u, clave: nueva } : u));
+    });
+    sesiones.eliminarDe(nombreUsuario);
+    responderJson(res, 200, { ok: true });
+  }
+
+  const rutasAdmin = {
+    'GET /api/admin/ajustes': (req, res) => verAjustes(res),
+    'PUT /api/admin/metas': (req, res) => guardarMetas(req, res),
+    'POST /api/admin/usuarios': (req, res, sesion) => guardarUsuario(req, res, sesion),
+    'DELETE /api/admin/usuarios': (req, res, sesion, consulta) => borrarUsuario(res, sesion, String(consulta.get('usuario') || '')),
+    'POST /api/admin/clave': (req, res, sesion) => cambiarClaveDe(req, res, sesion),
+    'PUT /api/admin/apariencia': (req, res) => guardarApariencia(req, res),
+    'PUT /api/admin/logo': (req, res) => guardarLogo(req, res),
+    'DELETE /api/admin/logo': (req, res) => quitarLogo(res)
+  };
 
   return {
     configuracion,
@@ -208,18 +236,13 @@ function crearAdmin({ almacen, fuente, sesiones, hoy, marca = {} }) {
 
     /** Rutas con sesion iniciada. Devuelve false si la ruta no es de este modulo. */
     async privado(req, res, ruta, sesion, consulta) {
-      const m = req.method;
-      if (ruta === '/api/clave' && m === 'POST') return cambiarMiClave(req, res, sesion).then(() => true);
+      if (ruta === '/api/clave' && req.method === 'POST') return cambiarMiClave(req, res, sesion).then(() => true);
       if (!ruta.startsWith('/api/admin/')) return false;
+      // Todo lo que esta bajo /api/admin/ es solo del administrador.
       exigirAdmin(sesion);
-      if (ruta === '/api/admin/ajustes' && m === 'GET') await verAjustes(res);
-      else if (ruta === '/api/admin/metas' && m === 'PUT') await guardarMetas(req, res);
-      else if (ruta === '/api/admin/usuarios' && m === 'POST') await guardarUsuario(req, res, sesion);
-      else if (ruta === '/api/admin/usuarios' && m === 'DELETE') borrarUsuario(res, sesion, String(consulta.get('usuario') || ''));
-      else if (ruta === '/api/admin/apariencia' && m === 'PUT') await guardarApariencia(req, res);
-      else if (ruta === '/api/admin/logo' && m === 'PUT') await guardarLogo(req, res);
-      else if (ruta === '/api/admin/logo' && m === 'DELETE') quitarLogo(res);
-      else return false;
+      const accion = rutasAdmin[`${req.method} ${ruta}`];
+      if (!accion) return false;
+      await accion(req, res, sesion, consulta);
       return true;
     }
   };

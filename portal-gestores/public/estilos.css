@@ -517,3 +517,11 @@ td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: t
   .tabla-scroll th, .tabla-scroll td { padding-right: 0.5rem; }
 }
 .fila strong { white-space: nowrap; }
+.aviso--bien { background: var(--bien-pista); border-left-color: var(--bien); margin-top: 0.4rem; }
+.campo-con-boton { display: flex; gap: 8px; }
+.campo-con-boton input { flex: 1; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.02em; }
+.celda-acciones { text-align: right; }
+.acciones { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+@media (max-width: 560px) {
+  .acciones { flex-direction: column; align-items: stretch; }
+}
